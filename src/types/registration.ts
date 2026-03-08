@@ -12,9 +12,8 @@ export type Gender = "PUTRA" | "PUTRI"
 
 export type Category = {
   id: string
-  name?: string
-  label?: string
-  type?: CategoryType
+  label: string
+  type: CategoryType
 
   // jumlah entry yang diisi pada Step 1
   quota: number
@@ -58,10 +57,7 @@ export type DocumentStatus =
   | "REJECTED"
 
 export type DocumentItem = {
-  fileId?: string
   fileName?: string
-  mimeType?: string
-  uploadedAt?: string
   status: DocumentStatus
   note?: string // catatan admin jika ditolak
 }
@@ -87,12 +83,9 @@ export type PaymentStatus =
   | "REJECTED"
 
 export type Payment = {
-  proofFileId?: string
   proofFileName?: string
-  proofMimeType?: string
   status: PaymentStatus
   uploadedAt?: string
-  totalFee: number
   note?: string // catatan admin jika reject
 }
 

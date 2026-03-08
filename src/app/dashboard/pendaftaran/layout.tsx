@@ -2,6 +2,8 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useState } from "react"
+import { useAuth } from "@/context/AuthContext"
 import { useRegistration } from "@/context/RegistrationContext"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Badge } from "@/components/ui/Badge"
@@ -12,7 +14,7 @@ function isActive(pathname: string, href: string) {
   return pathname.startsWith(href + "/")
 }
 
-function paymentTone(status: string) {
+function paymentTone(status: string): "success" | "warning" | "danger" | "neutral" {
   if (status === "APPROVED") return "success"
   if (status === "PENDING") return "warning"
   if (status === "REJECTED") return "danger"
@@ -21,7 +23,9 @@ function paymentTone(status: string) {
 
 function Stepper() {
   const pathname = usePathname()
+  const { user } = useAuth()
   const { state, hydrateReady } = useRegistration()
+  const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   if (!hydrateReady) {
     return (
@@ -40,6 +44,21 @@ function Stepper() {
   const isLocked =
     state.payment.status === "PENDING" ||
     state.payment.status === "APPROVED"
+
+  const handleSave = () => {
+    setSaveMessage(null)
+    if (!user) {
+      setSaveMessage({ type: "error", text: "Sesi user tidak ditemukan. Silakan login ulang." })
+      return
+    }
+
+    try {
+      localStorage.setItem(`mg26_registration_${user.id}`, JSON.stringify(state))
+      setSaveMessage({ type: "success", text: "Draft pendaftaran berhasil disimpan." })
+    } catch {
+      setSaveMessage({ type: "error", text: "Gagal menyimpan draft pendaftaran." })
+    }
+  }
 
   const steps = [
     {
@@ -82,7 +101,7 @@ function Stepper() {
             </CardDescription>
 
             <div className="mt-3 flex flex-wrap gap-2 items-center">
-              <Badge tone={paymentTone(state.payment.status) as any}>
+              <Badge tone={paymentTone(state.payment.status)}>
                 Payment: {state.payment.status}
               </Badge>
               {isLocked && <Badge tone="warning">Step 1 terkunci (edit disabled)</Badge>}
@@ -92,15 +111,31 @@ function Stepper() {
             </div>
           </div>
 
-          <Link href="/dashboard">
-            <Button variant="secondary" size="sm">
-              Kembali
+          <div className="flex flex-col gap-2">
+            <Button variant="secondary" size="sm" onClick={handleSave}>
+              Simpan Draft
             </Button>
-          </Link>
+            <Link href="/dashboard">
+              <Button variant="secondary" size="sm">
+                Kembali
+              </Button>
+            </Link>
+          </div>
         </div>
       </CardHeader>
 
       <CardContent>
+        {saveMessage && (
+          <div className={[
+            "mb-4 rounded-2xl border px-4 py-3 text-sm font-semibold",
+            saveMessage.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-rose-200 bg-rose-50 text-rose-800",
+          ].join(" ")}>
+            {saveMessage.text}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {steps.map((s) => {
             const active = isActive(pathname, s.href)

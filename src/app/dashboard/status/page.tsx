@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useAuth } from "@/context/AuthContext"
 import { useRegistration } from "@/context/RegistrationContext"
 
@@ -45,11 +45,18 @@ function formatISO(iso?: string) {
 
 export default function StatusPage() {
   const { user } = useAuth()
-  const { state, hydrateReady } = useRegistration()
-
+  const { state, hydrateReady, dispatch } = useRegistration()
+  const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const paymentStatus = state.payment.status
   const paymentApproved = paymentStatus === "APPROVED"
 
+  const handleReopenRegistration = () => {
+    const ok = window.confirm("Buka revisi pendaftaran? Step 1 akan terbuka lagi dan Anda perlu melakukan pembayaran ulang setelah revisi kuota.")
+    if (!ok) return
+
+    dispatch({ type: "SET_PAYMENT_STATUS", status: "NONE" })
+    setActionMsg({ type: "success", text: "Mode revisi dibuka. Silakan ubah kuota di Step 1, lalu lanjutkan pembayaran ulang di Step 2." })
+  }
   const paymentBadge = useMemo(() => {
     if (paymentStatus === "NONE") return <Badge text="Belum Upload" variant="gray" />
     if (paymentStatus === "PENDING") return <Badge text="Menunggu Verifikasi" variant="yellow" />
@@ -177,6 +184,7 @@ export default function StatusPage() {
     const step2Approved = paymentStatus === "APPROVED"
     const step3Ready = step2Approved && step3.done
     const step4Ready = step2Approved && step4.done
+    const allStepsComplete = step1Ready && step2Approved && step3.complete && step4.complete
 
     return {
       step1Ready,
@@ -184,8 +192,9 @@ export default function StatusPage() {
       step2Approved,
       step3Ready,
       step4Ready,
+      allStepsComplete,
     }
-  }, [step1.done, step3.done, step4.done, paymentStatus])
+  }, [step1.done, step3.complete, step3.done, step4.complete, step4.done, paymentStatus])
 
   if (!hydrateReady) {
     return (
@@ -205,7 +214,7 @@ export default function StatusPage() {
           <div>
             <h1 className="text-2xl font-extrabold text-gray-900">Status Pendaftaran</h1>
             <p className="text-gray-600 mt-2">
-              Ringkasan progres Step 1–4 + status verifikasi admin (mock).
+              Ringkasan progres Step 1-4 + status verifikasi admin (mock).
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2 items-center">
@@ -220,6 +229,11 @@ export default function StatusPage() {
             </div>
           </div>
 
+          {actionMsg && (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {actionMsg.text}
+            </div>
+          )}
           <div className="rounded-xl border bg-gray-50 p-4 min-w-[320px]">
             <div className="text-xs text-gray-500">Aksi Cepat</div>
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -248,22 +262,16 @@ export default function StatusPage() {
                     alert("Step 3 hanya bisa dibuka setelah pembayaran APPROVED.")
                   }
                 }}
-              >
-                Step 3
-              </Link>
-              <Link
-                href="/dashboard/pendaftaran/dokumen"
-                className={`px-3 py-2 rounded-xl font-extrabold text-sm text-center ${
-                  paymentApproved
-                    ? "bg-green-600 text-white hover:bg-green-700"
-                    : "bg-gray-200 text-gray-600 cursor-not-allowed"
+                >
+                  Step 3
+                </Link>
+                <Link
+                  href="/dashboard/pendaftaran/dokumen"
+                  className={`px-3 py-2 rounded-xl font-extrabold text-sm text-center ${
+                    paymentApproved
+                      ? "bg-green-600 text-white hover:bg-green-700"
+                      : "bg-gray-200 text-gray-600 cursor-not-allowed"
                 }`}
-                onClick={(e) => {
-                  if (!paymentApproved) {
-                    e.preventDefault()
-                    alert("Step 4 hanya bisa dibuka setelah pembayaran APPROVED.")
-                  }
-                }}
               >
                 Step 4
               </Link>
@@ -271,6 +279,28 @@ export default function StatusPage() {
           </div>
         </div>
       </div>
+          {checklist.allStepsComplete && (
+            <button
+              onClick={handleReopenRegistration}
+              className="mt-4 w-full rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-amber-600"
+            >
+              Revisi / Tambah Atlet Lagi
+            </button>
+          )}
+          {paymentApproved && !checklist.allStepsComplete && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Tombol tambah atlet lagi akan aktif setelah Step 1 sampai Step 4 selesai lengkap.
+            </div>
+          )}
+
+
+
+
+
+
+
+
+
 
       {/* Checklist Steps */}
       <div className="bg-white border rounded-xl p-6 shadow-sm">
@@ -343,9 +373,9 @@ export default function StatusPage() {
       <div className="bg-white border rounded-xl p-6 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-extrabold text-gray-900">Step 1 • Kuota Dipilih</div>
+            <div className="text-lg font-extrabold text-gray-900">Step 1 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Kuota Dipilih</div>
             <div className="text-sm text-gray-600 mt-1">
-              Total kuota atlet: <b>{step1.totalAthleteQuota}</b> • Official: <b>{step1.totalOfficialQuota}</b>
+              Total kuota atlet: <b>{step1.totalAthleteQuota}</b> ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Official: <b>{step1.totalOfficialQuota}</b>
             </div>
           </div>
           <Link
@@ -377,7 +407,7 @@ export default function StatusPage() {
       <div className="bg-white border rounded-xl p-6 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-extrabold text-gray-900">Step 3 • Atlet</div>
+            <div className="text-lg font-extrabold text-gray-900">Step 3 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Atlet</div>
             <div className="text-sm text-gray-600 mt-1">
               Total atlet terisi: <b>{step3.totalAthletes}</b> / <b>{step1.totalAthleteQuota}</b>
             </div>
@@ -431,7 +461,7 @@ export default function StatusPage() {
       <div className="bg-white border rounded-xl p-6 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-extrabold text-gray-900">Step 4 • Dokumen</div>
+            <div className="text-lg font-extrabold text-gray-900">Step 4 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Dokumen</div>
             <div className="text-sm text-gray-600 mt-1">
               Total dokumen terupload: <b>{step4.totalUploaded}</b> / <b>{step4.totalDocsNeeded}</b>
             </div>
@@ -472,7 +502,7 @@ export default function StatusPage() {
                   <div>
                     <div className="font-extrabold text-gray-900">{r.name}</div>
                     <div className="text-xs text-gray-600 mt-1">
-                      {r.sportId} • {r.categoryId}
+                      {r.sportId} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ {r.categoryId}
                     </div>
                   </div>
                   <Badge text={`${r.uploaded}/${r.total}`} variant={ok ? "green" : "yellow"} />

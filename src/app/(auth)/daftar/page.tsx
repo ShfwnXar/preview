@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import Image from "next/image"
 import React, { useMemo, useState } from "react"
@@ -16,17 +16,19 @@ export default function DaftarPage() {
   const { register } = useAuth()
   const router = useRouter()
 
-  const [form, setForm] = useState({ institutionName: "", institutionType: "SMA" as InstitutionType, address: "", picName: "", email: "", phone: "", password: "", confirmPassword: "" })
+  const [form, setForm] = useState({ institutionName: "", institutionType: "SMA_MA" as InstitutionType, address: "", picName: "", email: "", phone: "", password: "", confirmPassword: "" })
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   const institutionTypeOptions = useMemo(() => [
-    { value: "SD", label: "Sekolah (SD)" },
-    { value: "SMP", label: "Sekolah (SMP)" },
-    { value: "SMA", label: "Sekolah (SMA)" },
-    { value: "KAMPUS_PTM", label: "Kampus / PTM" },
+    { value: "SD_MI", label: "SD/MI" },
+    { value: "SMP_MTS", label: "SMP/MTS" },
+    { value: "SMA_MA", label: "SMA/MA" },
+    { value: "UNIVERSITAS_PTMA", label: "Universitas/PTMA" },
+    { value: "PIMPINAN_WILAYAH_MUHAMMADIYAH", label: "Pimpinan Wilayah Muhammadiyah" },
+    { value: "PIMPINAN_DAERAH_MUHAMMADIYAH", label: "Pimpinan Daerah Muhammadiyah" },
     { value: "PIMPINAN_RANTING", label: "Pimpinan Ranting" },
-    { value: "PIMPINAN_CABANG", label: "Pimpinan Cabang" },
+    { value: "PIMPINAN_CABANG", label: "Pimpinan Cabang Muhammadiyah" },
   ], [])
 
   const setField = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }))

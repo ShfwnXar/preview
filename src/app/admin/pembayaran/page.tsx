@@ -204,6 +204,7 @@ export default function AdminPembayaranPage() {
       payment: {
         ...reg.payment,
         status,
+        approvedTotalFee: status === 'APPROVED' ? reg.payment.totalFee : reg.payment.approvedTotalFee,
         note: note.trim() ? note.trim() : undefined,
       },
       status:
@@ -223,7 +224,11 @@ export default function AdminPembayaranPage() {
         status,
         note: note.trim() ? note.trim() : undefined,
       })
+      if (status === "APPROVED") {
+        localStorage.setItem(`mg26_approved_payment_total_${targetUserId}`, String(reg.payment.totalFee))
+      }
       localStorage.setItem("mg26_mock_payment_status", status === "NONE" ? "NONE" : status)
+      localStorage.setItem(key, JSON.stringify(updated))
       setRegistration(updated)
       alert("Status pembayaran berhasil disimpan.")
     } catch {
@@ -353,6 +358,7 @@ export default function AdminPembayaranPage() {
     </div>
   )
 }
+
 
 
 

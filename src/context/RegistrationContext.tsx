@@ -63,6 +63,7 @@ export type PaymentInfo = {
   proofMimeType?: string
   uploadedAt?: string
   totalFee: number
+  approvedTotalFee?: number
   note?: string
 }
 

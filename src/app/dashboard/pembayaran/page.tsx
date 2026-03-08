@@ -1,9 +1,10 @@
-﻿"use client"
+"use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRegistration } from "@/context/RegistrationContext"
-import { putFileBlob } from "@/lib/fileStore" // âœ… ADD
+import { useAuth } from "@/context/AuthContext"
+import { putFileBlob } from "@/lib/fileStore" 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card"
 import { Badge } from "@/components/ui/Badge"
 import { Button } from "@/components/ui/Button"
@@ -13,7 +14,7 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ")
 }
 
-function paymentTone(status: string) {
+function paymentTone(status: string): "success" | "warning" | "danger" | "neutral" {
   if (status === "APPROVED") return "success"
   if (status === "PENDING") return "warning"
   if (status === "REJECTED") return "danger"
@@ -30,13 +31,18 @@ function formatISO(iso?: string) {
 }
 
 export default function Step2PembayaranPage() {
-  const { state, hydrateReady, setPaymentProof } = useRegistration()
+  const { user } = useAuth()
+  const { state, hydrateReady, setPaymentProof, dispatch } = useRegistration()
 
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
-  const [note, setNote] = useState<string>(state.payment.note ?? "")
+  const [note, setNote] = useState<string>("")
   const [selectedProofFile, setSelectedProofFile] = useState<File | null>(null)
   const [isSubmittingProof, setIsSubmittingProof] = useState(false)
 
+
+  useEffect(() => {
+    setNote(state.payment.note ?? "")
+  }, [state.payment.note])
   const selectedSportsCount = state.sports.length
 
   const canUpload = useMemo(() => {
@@ -98,7 +104,7 @@ export default function Step2PembayaranPage() {
       <div className="max-w-5xl">
         <Card variant="glass">
           <CardHeader>
-            <CardTitle>Step 2 â€¢ Pembayaran</CardTitle>
+            <CardTitle>Step 2 - Pembayaran</CardTitle>
             <CardDescription>Memuat data pembayaran...</CardDescription>
           </CardHeader>
           <CardContent>
@@ -123,7 +129,7 @@ export default function Step2PembayaranPage() {
               </CardDescription>
 
               <div className="mt-3 flex flex-wrap gap-2 items-center">
-                <Badge tone={paymentTone(state.payment.status) as any}>
+                <Badge tone={paymentTone(state.payment.status)}>
                   Payment: {state.payment.status}
                 </Badge>
                 <Badge tone="info">Total: Rp {state.payment.totalFee.toLocaleString("id-ID")}</Badge>
@@ -140,6 +146,13 @@ export default function Step2PembayaranPage() {
             <div className="rounded-2xl border bg-white/70 backdrop-blur p-4 min-w-[320px]">
               <div className="text-xs text-gray-500">Navigasi</div>
               <div className="mt-2 flex flex-col gap-2">
+                <Button variant="secondary" className="w-full" onClick={() => {
+                  if (!user) return setMsg({ type: "error", text: "Sesi user tidak ditemukan. Silakan login ulang." })
+                  try { localStorage.setItem(`mg26_registration_${user.id}`, JSON.stringify(state)); setMsg({ type: "success", text: "Data Step 2 berhasil disimpan." }) }
+                  catch { setMsg({ type: "error", text: "Gagal menyimpan data Step 2." }) }
+                }}>
+                  Simpan Step 2
+                </Button>
                 <Link href="/dashboard/pendaftaran">
                   <Button variant="secondary" className="w-full">
                     Kembali Step 1
@@ -195,10 +208,10 @@ export default function Step2PembayaranPage() {
                 <div className="rounded-2xl border bg-gradient-to-br from-white to-sky-50/60 p-4">
                   <div className="text-xs text-gray-500">Status pembayaran</div>
                   <div className="mt-2">
-                    <Badge tone={paymentTone(state.payment.status) as any}>{state.payment.status}</Badge>
+                    <Badge tone={paymentTone(state.payment.status)}>{state.payment.status}</Badge>
                   </div>
                   <div className="mt-2 text-xs text-gray-500">
-                    Upload bukti â†’ <b>PENDING</b> â†’ Admin verifikasi â†’ <b>APPROVED/REJECTED</b>
+                    Upload bukti -&gt; <b>PENDING</b> -&gt; Admin verifikasi -&gt; <b>APPROVED/REJECTED</b>
                   </div>
                 </div>
               </div>
@@ -260,13 +273,9 @@ export default function Step2PembayaranPage() {
             <Textarea
               label="Catatan Peserta (opsional)"
               value={note}
-              onChange={(e) => setNote(e.target.value)}
+              onChange={(e) => { const value = e.target.value; setNote(value); dispatch({ type: "SET_PAYMENT_STATUS", status: state.payment.status, note: value.trim() ? value.trim() : undefined }) }}
               placeholder="Contoh: Transfer dari rekening ... / Nominal ..."
             />
-
-            <div className="text-xs text-gray-500">
-              *Catatan peserta saat ini hanya tampilan UI (akan siap dihubungkan ke backend nanti).
-            </div>
 
             <Link href="/dashboard/status">
               <Button variant="secondary" className="w-full">

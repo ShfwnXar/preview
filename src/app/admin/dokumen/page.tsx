@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useAuth } from "@/context/AuthContext"
 import { useEffect, useMemo, useState } from "react"
@@ -314,12 +314,12 @@ export default function AdminDokumenPage() {
   }
 
   const docsCounters = useMemo(() => {
-    const acc: Record<DocumentStatus, number> = { APPROVED: 0, REJECTED: 0, UPLOADED: 0, EMPTY: 0 }
+    const acc = { APPROVED: 0, REJECTED: 0, UPLOADED: 0, EMPTY: 0 }
     for (const a of visibleAthletes) {
       const doc = registration?.documents.find((d) => d.athleteId === a.id)
       if (!doc) continue
       for (const key of DOC_KEYS) {
-        const st: DocumentStatus = doc[key]?.status ?? "EMPTY"
+        const st = (doc as any)[key]?.status ?? "EMPTY"
         acc[st] += 1
       }
     }
@@ -582,7 +582,6 @@ export default function AdminDokumenPage() {
     </div>
   )
 }
-
 
 
 

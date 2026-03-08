@@ -1,8 +1,9 @@
-﻿"use client"
+"use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRegistration } from "@/context/RegistrationContext"
+import { useAuth } from "@/context/AuthContext"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Badge } from "@/components/ui/Badge"
@@ -23,12 +24,19 @@ function cx(...classes: Array<string | false | null | undefined>) {
 }
 
 export default function Step1PilihCaborDanJumlahPage() {
-  const { state, hydrateReady, setSports, updateSportPlanning } = useRegistration()
+  const { user } = useAuth()
+  const { state, hydrateReady, setSports, updateSportPlanning, dispatch } = useRegistration()
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
-  const isLocked =
-    state.payment.status === "PENDING" ||
-    state.payment.status === "APPROVED"
+  const approvedTotal = useMemo(() => {
+    if (!user) return 0
+    const raw = localStorage.getItem(`mg26_approved_payment_total_${user.id}`)
+    const total = Number(raw || 0)
+    return Number.isFinite(total) ? Math.max(0, total) : 0
+  }, [user])
+
+  const additionalDue = Math.max(0, state.payment.totalFee - approvedTotal)
+  const isLocked = state.payment.status === "PENDING"
 
   const selectedIds = useMemo(() => new Set(state.sports.map((s) => s.id)), [state.sports])
   const selectedCount = state.sports.length
@@ -36,7 +44,7 @@ export default function Step1PilihCaborDanJumlahPage() {
   const toggleSport = (id: string) => {
     setMsg(null)
     if (isLocked) {
-      setMsg({ type: "error", text: "Step 1 terkunci karena pembayaran sudah PENDING/APPROVED." })
+      setMsg({ type: "error", text: "Step 1 terkunci karena pembayaran tambahan sedang PENDING." })
       return
     }
 
@@ -63,14 +71,18 @@ export default function Step1PilihCaborDanJumlahPage() {
     setSports(next)
   }
 
-  const getSport = (sportId: string) => state.sports.find((s) => s.id === sportId)
+  useEffect(() => {
+    if (state.payment.status !== "APPROVED") return
+    if (additionalDue <= 0) return
+    dispatch({ type: "SET_PAYMENT_STATUS", status: "NONE" })
+  }, [additionalDue, dispatch, state.payment.status])
 
   if (!hydrateReady) {
     return (
       <div className="max-w-6xl">
         <Card variant="glass">
           <CardHeader>
-            <CardTitle>Step 1 â€¢ Pilih Cabor & Jumlah Peserta</CardTitle>
+            <CardTitle>Step 1 - Pilih Cabor & Jumlah Peserta</CardTitle>
             <CardDescription>Memuat data...</CardDescription>
           </CardHeader>
           <CardContent>
@@ -99,11 +111,12 @@ export default function Step1PilihCaborDanJumlahPage() {
                 <Badge tone="neutral">Payment: {state.payment.status}</Badge>
                 <Badge tone="brand">Total: Rp {state.payment.totalFee.toLocaleString("id-ID")}</Badge>
                 {isLocked ? <Badge tone="warning">Terkunci</Badge> : <Badge tone="success">Bisa diedit</Badge>}
+                {approvedTotal > 0 ? <Badge tone={additionalDue > 0 ? "warning" : "info"}>Pembayaran di-ACC: Rp {approvedTotal.toLocaleString("id-ID")}</Badge> : null}
               </div>
 
               {isLocked && (
                 <div className="mt-3 text-sm text-amber-800">
-                  Step 1 dikunci agar data jumlah peserta konsisten saat verifikasi pembayaran.
+                  Step 1 dikunci sementara selama bukti pembayaran tambahan sedang diverifikasi.
                 </div>
               )}
             </div>
@@ -119,9 +132,12 @@ export default function Step1PilihCaborDanJumlahPage() {
                 <Link href="/dashboard/status">
                   <Button className="w-full" variant="secondary">Lihat Status</Button>
                 </Link>
+                {approvedTotal > 0 ? (
+                  <div className="mt-1 text-xs text-gray-500">Jika total naik, pembayaran tambahan saat ini: Rp {additionalDue.toLocaleString("id-ID")}.</div>
+                ) : null}
               </div>
               <div className="mt-2 text-xs text-gray-500">
-                Setelah upload bukti bayar â†’ status PENDING â†’ Step 1 terkunci.
+                Setelah upload bukti bayar -&gt; status PENDING -&gt; Step 1 terkunci.
               </div>
             </div>
           </div>
@@ -246,7 +262,7 @@ export default function Step1PilihCaborDanJumlahPage() {
                               Rp {(s.plannedAthletes * 100_000).toLocaleString("id-ID")}
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
-                              Atlet 100k/orang • Official gratis
+                              Atlet 100k/orang - Official gratis
                             </div>
                           </div>
                         </>
@@ -309,16 +325,16 @@ export default function Step1PilihCaborDanJumlahPage() {
                         </>
                       )}
                     </div>
-
                     {isLocked && (
                       <div className="mt-3 text-xs text-amber-700 font-semibold">
-                        Terkunci karena pembayaran PENDING/APPROVED.
+                        Terkunci karena pembayaran tambahan sedang PENDING.
                       </div>
                     )}
                   </div>
                 )
               })}
             </div>
+
           )}
 
           <div className="flex flex-col md:flex-row gap-2 pt-2">

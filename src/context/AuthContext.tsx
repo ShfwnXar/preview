@@ -5,10 +5,12 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 export type Role = "PESERTA" | "ADMIN" | "ADMIN_CABOR" | "SUPER_ADMIN"
 
 export type InstitutionType =
-  | "SD"
-  | "SMP"
-  | "SMA"
-  | "KAMPUS_PTM"
+  | "SD_MI"
+  | "SMP_MTS"
+  | "SMA_MA"
+  | "UNIVERSITAS_PTMA"
+  | "PIMPINAN_WILAYAH_MUHAMMADIYAH"
+  | "PIMPINAN_DAERAH_MUHAMMADIYAH"
   | "PIMPINAN_RANTING"
   | "PIMPINAN_CABANG"
 
@@ -21,7 +23,6 @@ export type User = {
   picName: string
   email: string
   phone: string
-  isActive?: boolean
   assignedSportIds?: string[]
   createdAt: string
 }
@@ -149,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: "SUPER_ADMIN",
       institutionName: "Panitia Muhammadiyah Games",
       institutionType: "PIMPINAN_CABANG",
-      address: "—",
+      address: "-",
       picName: "Super Admin",
       email: normalizeEmail("superadmin@mg.local"),
       phone: "0000000000",
@@ -162,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: "ADMIN",
       institutionName: "Panitia Muhammadiyah Games",
       institutionType: "PIMPINAN_CABANG",
-      address: "—",
+      address: "-",
       picName: "Admin Umum",
       email: normalizeEmail("admin@mg.local"),
       phone: "0000000000",
@@ -175,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: "ADMIN_CABOR",
       institutionName: "Panitia Muhammadiyah Games",
       institutionType: "PIMPINAN_CABANG",
-      address: "—",
+      address: "-",
       picName: "Admin Cabor Voli",
       email: normalizeEmail("adminvoli@mg.local"),
       phone: "0000000000",
