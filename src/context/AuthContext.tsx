@@ -23,6 +23,7 @@ export type User = {
   picName: string
   email: string
   phone: string
+  isActive?: boolean
   assignedSportIds?: string[]
   createdAt: string
 }
