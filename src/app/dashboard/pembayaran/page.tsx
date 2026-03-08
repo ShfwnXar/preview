@@ -146,7 +146,7 @@ export default function Step2PembayaranPage() {
             <div className="rounded-2xl border bg-white/70 backdrop-blur p-4 min-w-[320px]">
               <div className="text-xs text-gray-500">Navigasi</div>
               <div className="mt-2 flex flex-col gap-2">
-                <Button variant="secondary" className="w-full" onClick={() => {
+                <Button variant="primary" className="w-full" onClick={() => {
                   if (!user) return setMsg({ type: "error", text: "Sesi user tidak ditemukan. Silakan login ulang." })
                   try { localStorage.setItem(`mg26_registration_${user.id}`, JSON.stringify(state)); setMsg({ type: "success", text: "Data Step 2 berhasil disimpan." }) }
                   catch { setMsg({ type: "error", text: "Gagal menyimpan data Step 2." }) }

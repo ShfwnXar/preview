@@ -393,7 +393,7 @@ export default function Step3AtletPage() {
                 href="/dashboard/pendaftaran/dokumen"
                 className={cx(
                   "px-3 py-2 rounded-lg font-bold text-sm",
-                  paymentApproved ? "bg-green-600 text-white hover:bg-green-700" : "bg-gray-200 text-gray-600 cursor-not-allowed"
+                  paymentApproved ? "bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 text-white shadow-[0_10px_28px_rgba(16,185,129,0.28)] hover:brightness-105" : "bg-gray-200 text-gray-600 cursor-not-allowed"
                 )}
                 onClick={(e) => {
                   if (!paymentApproved) {
@@ -549,7 +549,7 @@ export default function Step3AtletPage() {
               disabled={!canAddOfficialHere}
               className={cx(
                 "px-5 py-2 rounded-xl font-extrabold",
-                canAddOfficialHere ? "bg-green-600 text-white hover:bg-green-700" : "bg-gray-200 text-gray-600 cursor-not-allowed"
+                canAddOfficialHere ? "bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 text-white shadow-[0_10px_28px_rgba(16,185,129,0.28)] hover:brightness-105" : "bg-gray-200 text-gray-600 cursor-not-allowed"
               )}
             >
               Tambah Official
@@ -714,7 +714,7 @@ export default function Step3AtletPage() {
               onClick={handleAddRoster}
               className={cx(
                 "px-5 py-2 rounded-xl font-extrabold",
-                canAddRoster ? "bg-green-600 text-white hover:bg-green-700" : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                canAddRoster ? "bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 text-white shadow-[0_10px_28px_rgba(16,185,129,0.28)] hover:brightness-105" : "bg-gray-200 text-gray-500 cursor-not-allowed"
               )}
             >
               Tambah Atlet ({Math.max(1, rosterSize || 1)} orang)
@@ -799,7 +799,7 @@ export default function Step3AtletPage() {
               href="/dashboard/pendaftaran/dokumen"
               className={cx(
                 "px-5 py-2 rounded-xl font-extrabold text-center",
-                paymentApproved ? "bg-green-600 text-white hover:bg-green-700" : "bg-gray-200 text-gray-600 cursor-not-allowed"
+                paymentApproved ? "bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 text-white shadow-[0_10px_28px_rgba(16,185,129,0.28)] hover:brightness-105" : "bg-gray-200 text-gray-600 cursor-not-allowed"
               )}
               onClick={(e) => {
                 if (!paymentApproved) {

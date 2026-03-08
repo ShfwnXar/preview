@@ -373,9 +373,9 @@ export default function StatusPage() {
       <div className="bg-white border rounded-xl p-6 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-extrabold text-gray-900">Step 1 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Kuota Dipilih</div>
+            <div className="text-lg font-extrabold text-gray-900">Step 1 - Kuota Dipilih</div>
             <div className="text-sm text-gray-600 mt-1">
-              Total kuota atlet: <b>{step1.totalAthleteQuota}</b> ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Official: <b>{step1.totalOfficialQuota}</b>
+              Total kuota atlet: <b>{step1.totalAthleteQuota}</b> | Official: <b>{step1.totalOfficialQuota}</b>
             </div>
           </div>
           <Link
@@ -407,7 +407,7 @@ export default function StatusPage() {
       <div className="bg-white border rounded-xl p-6 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-extrabold text-gray-900">Step 3 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Atlet</div>
+            <div className="text-lg font-extrabold text-gray-900">Step 3 - Atlet</div>
             <div className="text-sm text-gray-600 mt-1">
               Total atlet terisi: <b>{step3.totalAthletes}</b> / <b>{step1.totalAthleteQuota}</b>
             </div>
@@ -417,7 +417,7 @@ export default function StatusPage() {
             href="/dashboard/pendaftaran/atlet"
             className={`px-4 py-2 rounded-xl font-extrabold text-sm ${
               paymentApproved
-                ? "bg-green-600 text-white hover:bg-green-700"
+                ? "bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 text-white shadow-[0_10px_28px_rgba(16,185,129,0.28)] hover:brightness-105"
                 : "bg-gray-200 text-gray-600 cursor-not-allowed"
             }`}
             onClick={(e) => {
@@ -461,7 +461,7 @@ export default function StatusPage() {
       <div className="bg-white border rounded-xl p-6 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-extrabold text-gray-900">Step 4 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Dokumen</div>
+            <div className="text-lg font-extrabold text-gray-900">Step 4 - Dokumen</div>
             <div className="text-sm text-gray-600 mt-1">
               Total dokumen terupload: <b>{step4.totalUploaded}</b> / <b>{step4.totalDocsNeeded}</b>
             </div>
@@ -471,7 +471,7 @@ export default function StatusPage() {
             href="/dashboard/pendaftaran/dokumen"
             className={`px-4 py-2 rounded-xl font-extrabold text-sm ${
               paymentApproved
-                ? "bg-green-600 text-white hover:bg-green-700"
+                ? "bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 text-white shadow-[0_10px_28px_rgba(16,185,129,0.28)] hover:brightness-105"
                 : "bg-gray-200 text-gray-600 cursor-not-allowed"
             }`}
             onClick={(e) => {
@@ -502,7 +502,7 @@ export default function StatusPage() {
                   <div>
                     <div className="font-extrabold text-gray-900">{r.name}</div>
                     <div className="text-xs text-gray-600 mt-1">
-                      {r.sportId} ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ {r.categoryId}
+                      {r.sportId} | {r.categoryId}
                     </div>
                   </div>
                   <Badge text={`${r.uploaded}/${r.total}`} variant={ok ? "green" : "yellow"} />

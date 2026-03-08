@@ -62,25 +62,25 @@ function Stepper() {
 
   const steps = [
     {
-      label: "Step 1 • Pilih Cabor",
+      label: "Step 1 - Pilih Cabor",
       href: "/dashboard/pendaftaran",
       note: isLocked ? "Terkunci (pembayaran PENDING/APPROVED)" : "Buka",
       disabled: false,
     },
     {
-      label: "Step 2 • Pembayaran",
+      label: "Step 2 - Pembayaran",
       href: "/dashboard/pembayaran",
       note: "Upload bukti pembayaran",
       disabled: false,
     },
     {
-      label: "Step 3 • Input Atlet + Kategori",
+      label: "Step 3 - Input Atlet + Kategori",
       href: "/dashboard/pendaftaran/atlet",
       note: "Pilih kategori per atlet sesuai kuota",
       disabled: state.payment.status !== "APPROVED",
     },
     {
-      label: "Step 4 • Upload Dokumen Atlet",
+      label: "Step 4 - Upload Dokumen Atlet",
       href: "/dashboard/pendaftaran/dokumen",
       note: "Upload 5 dokumen per atlet",
       disabled: state.payment.status !== "APPROVED",
@@ -95,7 +95,7 @@ function Stepper() {
             <div className="text-xs font-extrabold text-gray-500 tracking-wider">
               PENDAFTARAN
             </div>
-            <CardTitle className="mt-1">Alur Pendaftaran (Step 1–4)</CardTitle>
+            <CardTitle className="mt-1">Alur Pendaftaran (Step 1-4)</CardTitle>
             <CardDescription className="mt-2">
               Step 3 & 4 terbuka setelah pembayaran <b>APPROVED</b>.
             </CardDescription>
@@ -112,7 +112,7 @@ function Stepper() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <Button variant="secondary" size="sm" onClick={handleSave}>
+            <Button variant="primary" size="sm" onClick={handleSave}>
               Simpan Draft
             </Button>
             <Link href="/dashboard">

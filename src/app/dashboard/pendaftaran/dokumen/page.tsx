@@ -264,7 +264,7 @@ export default function Step4DokumenPage() {
             <div className="mt-3">
               <Link
                 href="/dashboard/pendaftaran/atlet"
-                className="inline-flex px-4 py-2 rounded-xl bg-green-600 text-white font-extrabold hover:bg-green-700"
+                className="inline-flex rounded-xl bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 px-4 py-2 font-extrabold text-white shadow-[0_10px_28px_rgba(16,185,129,0.28)] hover:brightness-105"
               >
                 Ke Step 3 (Input Atlet)
               </Link>
@@ -405,7 +405,7 @@ export default function Step4DokumenPage() {
                           type="button"
                           disabled={!paymentApproved || !selectedFile || loadingKey === d.key}
                           onClick={() => onSubmitFile(d.key)}
-                          className={`mt-3 w-full rounded-lg px-3 py-2 text-sm font-extrabold ${!paymentApproved || !selectedFile || loadingKey === d.key ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}
+                          className={`mt-3 w-full rounded-lg px-3 py-2 text-sm font-extrabold ${!paymentApproved || !selectedFile || loadingKey === d.key ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 text-white shadow-[0_10px_28px_rgba(16,185,129,0.28)] hover:brightness-105"}`}
                         >
                           {loadingKey === d.key ? "Menyimpan..." : "Submit Dokumen"}
                         </button>
@@ -440,7 +440,7 @@ export default function Step4DokumenPage() {
           <div className="flex gap-2">
             <Link
               href="/dashboard/status"
-              className="px-5 py-2 rounded-xl bg-green-600 text-white font-extrabold hover:bg-green-700"
+              className="rounded-xl bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 px-5 py-2 font-extrabold text-white shadow-[0_10px_28px_rgba(16,185,129,0.28)] hover:brightness-105"
             >
               Lihat Status
             </Link>
