@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react"
 
@@ -21,6 +21,7 @@ export type User = {
   picName: string
   email: string
   phone: string
+  isActive?: boolean
   assignedSportIds?: string[]
   createdAt: string
 }
@@ -148,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: "SUPER_ADMIN",
       institutionName: "Panitia Muhammadiyah Games",
       institutionType: "PIMPINAN_CABANG",
-      address: "â€”",
+      address: "—",
       picName: "Super Admin",
       email: normalizeEmail("superadmin@mg.local"),
       phone: "0000000000",
@@ -161,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: "ADMIN",
       institutionName: "Panitia Muhammadiyah Games",
       institutionType: "PIMPINAN_CABANG",
-      address: "â€”",
+      address: "—",
       picName: "Admin Umum",
       email: normalizeEmail("admin@mg.local"),
       phone: "0000000000",
@@ -174,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: "ADMIN_CABOR",
       institutionName: "Panitia Muhammadiyah Games",
       institutionType: "PIMPINAN_CABANG",
-      address: "â€”",
+      address: "—",
       picName: "Admin Cabor Voli",
       email: normalizeEmail("adminvoli@mg.local"),
       phone: "0000000000",
