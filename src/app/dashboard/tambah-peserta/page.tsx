@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRegistration } from "@/context/RegistrationContext"
 import { useAuth } from "@/context/AuthContext"
 import { getExtraAccess, getTopUp, withExtraFlow } from "@/lib/extraAthleteFlow"
+import { SPORTS_CATALOG } from "@/data/sportsCatalog"
 import type { RegistrationState as DraftRegistrationState } from "@/context/RegistrationContext"
 import type { ExtraAthleteAccessItem, Registration } from "@/types/registration"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card"
@@ -97,7 +98,7 @@ export default function TambahPesertaPage() {
   const extraAccess = getExtraAccess(hybridState)
   const topUp = getTopUp(hybridState)
   const [reason, setReason] = useState(extraAccess.requestedReason ?? "")
-  const sportOptions = state.sports || []
+  const sportOptions = SPORTS_CATALOG
   const existingItems = useMemo(() => normalizeRequestItems(hybridState), [hybridState])
   const [requestedBySport, setRequestedBySport] = useState<RequestDraft>({})
 

@@ -124,15 +124,37 @@ export default function Step3AtletPage() {
   // - lama: athleteQuota
   // - baru: plannedAthletes
   const sportOptions = useMemo(() => {
-    return (state.sports || []).filter((s: any) => {
+    const baseSports = state.sports || []
+    const extraSports = (extraAccess.requestItems || [])
+      .filter((item: any) => Math.max(0, Number(item.approvedSlots ?? 0)) > 0)
+      .map((item: any) => {
+        const catalogSport = (SPORTS_CATALOG as CatalogSport[]).find((sport) => sport.id === item.sportId)
+        return {
+          id: item.sportId,
+          name: item.sportName,
+          athleteQuota: Math.max(0, Number(item.approvedSlots ?? 0)),
+          categories: catalogSport?.categories ?? [],
+          plannedAthletes: Math.max(0, Number(item.approvedSlots ?? 0)),
+          officialCount: 0,
+        }
+      })
+    const mergedSports = [...baseSports]
+    for (const sport of extraSports) {
+      if (!mergedSports.some((existing: any) => existing.id === sport.id)) {
+        mergedSports.push(sport as any)
+      }
+    }
+
+    return mergedSports.filter((s: any) => {
       const q = getSportAthleteQuota(s)
-      return q > 0 || (state.athletes || []).some((a) => a.sportId === s.id)
+      const extraQuota = getApprovedExtraSlotsForSport(state as any, s.id)
+      return q > 0 || extraQuota > 0 || (state.athletes || []).some((a) => a.sportId === s.id)
     })
-  }, [state.sports, state.athletes])
+  }, [state.sports, state.athletes, extraAccess.requestItems, state])
 
   const selectedSport = useMemo(() => {
-    return (state.sports || []).find((s) => s.id === selectedSportId) ?? null
-  }, [state.sports, selectedSportId])
+    return sportOptions.find((s: any) => s.id === selectedSportId) ?? null
+  }, [sportOptions, selectedSportId])
 
   // ==== categories dari catalog ====
   const categoriesForSport = useMemo(() => {

@@ -378,9 +378,10 @@ export default function AdminPembayaranPage() {
                 <option value="CLOSED">CLOSED / Ditolak</option>
               </select>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-semibold">Slot Disetujui</label>
-              <input type="number" min={0} value={approvedSlots} onChange={(e) => setApprovedSlots(e.target.value)} className="w-full rounded-lg border px-3 py-2" />
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-semibold">Slot Disetujui Per Cabor</label>
+              {extraRequestItems.length > 0 ? <div className="mb-2 text-xs text-gray-500">Total diminta: <b>{extraRequestItems.reduce((total, item) => total + item.requestedSlots, 0)}</b> | Total disetujui: <b>{extraRequestItems.reduce((total, item) => total + Math.max(0, Number(approvedBySport[item.sportId] ?? item.approvedSlots ?? item.requestedSlots ?? 0)), 0)}</b></div> : null}
+              {extraRequestItems.length > 0 ? <div className="grid gap-3 md:grid-cols-2">{extraRequestItems.map((item) => <div key={item.sportId} className="rounded-xl border bg-gray-50 p-4"><div className="text-sm font-bold text-gray-900">{item.sportName}</div><div className="mt-1 text-xs text-gray-500">Diminta: {item.requestedSlots} slot</div><input type="number" min={0} value={approvedBySport[item.sportId] ?? String(item.approvedSlots ?? item.requestedSlots ?? 0)} onChange={(e) => setApprovedBySport((prev) => ({ ...prev, [item.sportId]: e.target.value }))} className="mt-3 w-full rounded-lg border px-3 py-2" /></div>)}</div> : <input type="number" min={0} value={approvedSlots} onChange={(e) => setApprovedSlots(e.target.value)} className="w-full rounded-lg border px-3 py-2" />}
             </div>
             <div>
               <label className="mb-1 block text-sm font-semibold">Status Pembayaran Tambahan</label>
@@ -408,8 +409,13 @@ export default function AdminPembayaranPage() {
               onClick={() => {
                 if (!targetUserId || !registration) return
                 const key = `mg26_registration_${targetUserId}`
+                const requestItems = getExtraAccess(registration as any).requestItems ?? []
+                const normalizedRequestItems = requestItems.map((item: ExtraAthleteAccessItem) => ({
+                  ...item,
+                  approvedSlots: extraStatus === "OPEN" ? Math.max(0, Number(approvedBySport[item.sportId] ?? item.requestedSlots ?? 0)) : 0,
+                }))
                 const requestedSlots = Math.max(0, Number(registration.extraAthleteAccess?.requestedSlots ?? 0))
-                const normalizedApprovedSlots = extraStatus === "OPEN" ? Math.max(1, Number(approvedSlots || requestedSlots || 0)) : 0
+                const normalizedApprovedSlots = extraStatus === "OPEN" ? (normalizedRequestItems.length > 0 ? normalizedRequestItems.reduce((total: number, item: ExtraAthleteAccessItem) => total + Math.max(0, Number(item.approvedSlots ?? 0)), 0) : Math.max(1, Number(approvedSlots || requestedSlots || 0))) : 0
                 const normalizedTopUpStatus = extraStatus === "OPEN" ? (topUpStatus === "NONE" ? "REQUIRED" : topUpStatus) : "NONE"
                 const updated = withExtraFlow({
                   ...registration,
@@ -418,6 +424,7 @@ export default function AdminPembayaranPage() {
                     ...registration.extraAthleteAccess,
                     status: extraStatus,
                     approvedSlots: normalizedApprovedSlots,
+                    requestItems: normalizedRequestItems.length > 0 ? normalizedRequestItems : registration.extraAthleteAccess?.requestItems,
                     adminNote: extraNote.trim() ? extraNote.trim() : undefined,
                     approvedAt: extraStatus === "OPEN" ? new Date().toISOString() : registration.extraAthleteAccess?.approvedAt,
                     approvedBy: extraStatus === "OPEN" ? adminUser?.email : registration.extraAthleteAccess?.approvedBy,
