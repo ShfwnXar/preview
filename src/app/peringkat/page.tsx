@@ -4,43 +4,25 @@ import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { eventConfig } from "@/lib/eventConfig"
-
-type MedalRow = {
-  id: string
-  name: string
-  gold: number
-  silver: number
-  bronze: number
-}
-
-const LS_MEDAL_TABLE = "mg26_medal_table"
-
-function safeParse<T>(value: string | null, fallback: T): T {
-  try {
-    if (!value) return fallback
-    return JSON.parse(value) as T
-  } catch {
-    return fallback
-  }
-}
+import { buildMedalTable, getWinnerResults, type WinnerResult } from "@/lib/winnerResults"
 
 export default function PeringkatPage() {
-  const [rows, setRows] = useState<MedalRow[]>([])
+  const [results, setResults] = useState<WinnerResult[]>([])
 
   useEffect(() => {
-    setRows(safeParse<MedalRow[]>(localStorage.getItem(LS_MEDAL_TABLE), []))
+    setResults(getWinnerResults())
   }, [])
 
   const sorted = useMemo(() => {
-    return [...rows]
-      .map((r) => ({ ...r, total: r.gold + r.silver + r.bronze }))
+    return buildMedalTable(results)
+      .map((row) => ({ ...row, total: row.gold + row.silver + row.bronze }))
       .sort((a, b) => {
         if (b.gold !== a.gold) return b.gold - a.gold
         if (b.silver !== a.silver) return b.silver - a.silver
         if (b.bronze !== a.bronze) return b.bronze - a.bronze
         return b.total - a.total
       })
-  }, [rows])
+  }, [results])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-emerald-50/40 to-slate-100">
@@ -53,7 +35,7 @@ export default function PeringkatPage() {
               </div>
               <h1 className="mt-3 text-3xl font-extrabold text-gray-900 md:text-4xl">Peringkat Perolehan Medali</h1>
               <p className="mt-2 max-w-2xl text-sm text-gray-600 md:text-base">
-                Peringkat kontingen berdasarkan jumlah emas, perak, perunggu, lalu total medali.
+                Peringkat dihitung otomatis dari hasil pemenang yang diinput admin setiap hari lomba.
               </p>
 
               <div className="mt-5 flex flex-wrap gap-3">
@@ -77,7 +59,7 @@ export default function PeringkatPage() {
 
         <section className="rounded-2xl border border-emerald-100 bg-white/90 p-5 shadow-sm">
           {sorted.length === 0 ? (
-            <div className="text-sm text-gray-600">Belum ada data medali. Admin akan mengunggah hasil pemenang.</div>
+            <div className="text-sm text-gray-600">Belum ada hasil lomba. Admin akan mengunggah pemenang harian.</div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-emerald-100">
               <table className="w-full text-sm">
@@ -92,17 +74,17 @@ export default function PeringkatPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((r, idx) => (
-                    <tr key={r.id}>
+                  {sorted.map((row, idx) => (
+                    <tr key={row.id}>
                       <td className="font-bold">{idx + 1}</td>
                       <td>
-                        <div className="font-semibold text-gray-900">{r.name}</div>
-                        <div className="text-xs text-gray-500">{r.id}</div>
+                        <div className="font-semibold text-gray-900">{row.name}</div>
+                        <div className="text-xs text-gray-500">{row.id}</div>
                       </td>
-                      <td className="font-semibold">{r.gold}</td>
-                      <td className="font-semibold">{r.silver}</td>
-                      <td className="font-semibold">{r.bronze}</td>
-                      <td className="font-bold">{r.total}</td>
+                      <td className="font-semibold">{row.gold}</td>
+                      <td className="font-semibold">{row.silver}</td>
+                      <td className="font-semibold">{row.bronze}</td>
+                      <td className="font-bold">{row.total}</td>
                     </tr>
                   ))}
                 </tbody>

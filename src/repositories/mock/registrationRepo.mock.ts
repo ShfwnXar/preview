@@ -67,6 +67,7 @@ export class MockRegistrationRepo implements RegistrationRepository {
         [docKey]: {
           ...doc[docKey],
           status: nextStatus,
+          note: input.note,
         },
       }
     })

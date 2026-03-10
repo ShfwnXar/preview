@@ -3,11 +3,14 @@
 
 import { useAuth } from "@/context/AuthContext"
 import { getFileBlob } from "@/lib/fileStore"
+import { getExtraAccess, getTopUp, withExtraFlow } from "@/lib/extraAthleteFlow"
 import { Repos } from "@/repositories"
-import type { PaymentStatus, Registration } from "@/types/registration"
+import type { ExtraAthleteAccessItem, PaymentStatus, Registration, TopUpPaymentStatus, ExtraAthleteAccessStatus } from "@/types/registration"
 import { useEffect, useMemo, useState } from "react"
 
 type PaymentFilter = "ALL" | "ACC" | "BELUM_ACC"
+
+type ApprovedDraft = Record<string, string>
 
 type PreviewState = {
   open: boolean
@@ -55,6 +58,12 @@ export default function AdminPembayaranPage() {
   const [registration, setRegistration] = useState<Registration | null>(null)
   const [status, setStatus] = useState<PaymentStatus>("NONE")
   const [note, setNote] = useState<string>("")
+  const [extraStatus, setExtraStatus] = useState<ExtraAthleteAccessStatus>("NONE")
+  const [approvedSlots, setApprovedSlots] = useState<string>("0")
+  const [approvedBySport, setApprovedBySport] = useState<ApprovedDraft>({})
+  const [extraNote, setExtraNote] = useState<string>("")
+  const [topUpStatus, setTopUpStatus] = useState<TopUpPaymentStatus>("NONE")
+  const [topUpNote, setTopUpNote] = useState<string>("")
 
   const [preview, setPreview] = useState<PreviewState>({
     open: false,
@@ -142,6 +151,15 @@ export default function AdminPembayaranPage() {
         setStatus("NONE")
         setNote("")
       }
+
+      const nextExtra = getExtraAccess((reg ?? {}) as any)
+      const nextTopUp = getTopUp((reg ?? {}) as any)
+      setExtraStatus(nextExtra.status as ExtraAthleteAccessStatus)
+      setApprovedSlots(String(nextExtra.approvedSlots || nextExtra.requestedSlots || 0))
+      setApprovedBySport((nextExtra.requestItems ?? []).reduce((acc: ApprovedDraft, item: ExtraAthleteAccessItem) => { acc[item.sportId] = String(item.approvedSlots ?? item.requestedSlots ?? 0); return acc }, {} as ApprovedDraft))
+      setExtraNote(nextExtra.adminNote ?? "")
+      setTopUpStatus(nextTopUp.status as TopUpPaymentStatus)
+      setTopUpNote(nextTopUp.note ?? "")
     }
 
     void loadRegistration()
@@ -150,20 +168,16 @@ export default function AdminPembayaranPage() {
     }
   }, [targetUserId])
 
-  const openPreview = async () => {
-    if (!registration) return
-    const paymentAny = registration.payment as any
-    const fileId = paymentAny?.proofFileId as string | undefined
-    const mime = (paymentAny?.proofMimeType as string | undefined) ?? ""
-    const fileName = registration.payment.proofFileName ?? "bukti-pembayaran"
+  const extraRequestItems = useMemo<ExtraAthleteAccessItem[]>(() => getExtraAccess((registration ?? {}) as any).requestItems ?? [], [registration])
 
+  const openStoredPreview = async (fileId?: string, mime?: string, fileName?: string) => {
     if (!fileId) {
-      alert("File bukti tidak ditemukan.")
+      alert("File tidak ditemukan.")
       return
     }
 
     if (preview.url) URL.revokeObjectURL(preview.url)
-    setPreview({ open: true, loading: true, error: null, url: "", mime, fileName })
+    setPreview({ open: true, loading: true, error: null, url: "", mime: mime ?? "", fileName: fileName ?? "file" })
 
     try {
       const blob = await getFileBlob(fileId)
@@ -173,7 +187,7 @@ export default function AdminPembayaranPage() {
       }
       const objectUrl = URL.createObjectURL(blob)
       const finalMime = mime || blob.type || "application/octet-stream"
-      setPreview({ open: true, loading: false, error: null, url: objectUrl, mime: finalMime, fileName })
+      setPreview({ open: true, loading: false, error: null, url: objectUrl, mime: finalMime, fileName: fileName ?? "file" })
     } catch {
       setPreview((prev) => ({ ...prev, loading: false, error: "Gagal membuka preview file." }))
     }
@@ -283,8 +297,8 @@ export default function AdminPembayaranPage() {
                 <div className="mt-1 text-sm font-bold text-gray-900">{registration.payment.proofFileName ?? "-"}</div>
                 <div className="text-xs text-gray-500">Upload: {registration.payment.uploadedAt ?? "-"}</div>
                 <button
-                  onClick={openPreview}
-                  disabled={!(registration.payment as any)?.proofFileId}
+                  onClick={() => openStoredPreview(registration.payment.proofFileId, registration.payment.proofMimeType, registration.payment.proofFileName)}
+                  disabled={!registration.payment.proofFileId}
                   className="mt-3 rounded-lg border bg-white px-3 py-2 text-sm font-bold hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
                 >
                   Preview Bukti
@@ -315,13 +329,121 @@ export default function AdminPembayaranPage() {
 
             <div className="flex items-center gap-3">
               <button onClick={handleSave} className="rounded-lg bg-green-600 px-5 py-2 text-sm font-extrabold text-white hover:bg-green-700">
-                Simpan Validasi
+                Simpan Pembayaran Utama
               </button>
-              <div className="text-xs text-gray-500">Jika APPROVED maka Step 3-4 peserta terbuka.</div>
+              <div className="text-xs text-gray-500">Jika APPROVED maka peserta bisa masuk ke flow pengajuan tambahan kuota.</div>
             </div>
           </>
         )}
       </div>
+      {registration && (
+        <div className="rounded-2xl border bg-white p-6 shadow-sm space-y-4">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-lg font-extrabold text-gray-900">Pengajuan Tambah Peserta</div>
+              <div className="mt-1 text-sm text-gray-600">Admin memverifikasi slot tambahan dan pembayaran top-up secara terpisah dari kuota lama.</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-extrabold ${paymentBadgeClass(extraStatus)}`}>Request: {extraStatus}</span>
+              <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-extrabold ${paymentBadgeClass(topUpStatus)}`}>Top-up: {topUpStatus}</span>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border bg-gray-50 p-4">
+              <div className="text-xs text-gray-500">Slot diajukan</div>
+              <div className="mt-1 text-xl font-extrabold text-gray-900">{registration.extraAthleteAccess?.requestedSlots ?? 0}</div>
+              <div className="mt-1 text-xs text-gray-500">Alasan: {registration.extraAthleteAccess?.requestedReason ?? "-"}</div>
+              <div className="mt-1 text-xs text-gray-500">Cabor diajukan: {extraRequestItems.length > 0 ? extraRequestItems.map((item) => `${item.sportName} (${item.requestedSlots})`).join(", ") : registration.extraAthleteAccess?.requestedSportName ?? "-"}</div>
+            </div>
+            <div className="rounded-xl border bg-gray-50 p-4">
+              <div className="text-xs text-gray-500">Slot disetujui</div>
+              <div className="mt-1 text-xl font-extrabold text-gray-900">{registration.extraAthleteAccess?.approvedSlots ?? 0}</div>
+              <div className="mt-1 text-xs text-gray-500">Nominal: Rp {getTopUp(registration as any).additionalFee.toLocaleString("id-ID")}</div>
+            </div>
+            <div className="rounded-xl border bg-gray-50 p-4">
+              <div className="text-xs text-gray-500">Bukti top-up</div>
+              <div className="mt-1 text-sm font-bold text-gray-900">{registration.topUpPayment?.proofFileName ?? "-"}</div>
+              <button onClick={() => openStoredPreview(registration.topUpPayment?.proofFileId, registration.topUpPayment?.proofMimeType, registration.topUpPayment?.proofFileName)} disabled={!registration.topUpPayment?.proofFileId} className="mt-3 rounded-lg border bg-white px-3 py-2 text-sm font-bold hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400">Preview Bukti Top-up</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 rounded-xl border p-4 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Status Pengajuan Tambahan</label>
+              <select value={extraStatus} onChange={(e) => setExtraStatus(e.target.value as ExtraAthleteAccessStatus)} className="w-full rounded-lg border px-3 py-2">
+                <option value="NONE">NONE</option>
+                <option value="REQUESTED">REQUESTED</option>
+                <option value="OPEN">OPEN / Disetujui</option>
+                <option value="CLOSED">CLOSED / Ditolak</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Slot Disetujui</label>
+              <input type="number" min={0} value={approvedSlots} onChange={(e) => setApprovedSlots(e.target.value)} className="w-full rounded-lg border px-3 py-2" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Status Pembayaran Tambahan</label>
+              <select value={topUpStatus} onChange={(e) => setTopUpStatus(e.target.value as TopUpPaymentStatus)} className="w-full rounded-lg border px-3 py-2">
+                <option value="NONE">NONE</option>
+                <option value="REQUIRED">REQUIRED</option>
+                <option value="PENDING">PENDING</option>
+                <option value="APPROVED">APPROVED</option>
+                <option value="REJECTED">REJECTED</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold">Catatan Pengajuan</label>
+              <textarea value={extraNote} onChange={(e) => setExtraNote(e.target.value)} className="min-h-[92px] w-full rounded-lg border px-3 py-2" placeholder="Catatan admin untuk pengajuan tambahan" />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-semibold">Catatan Pembayaran Tambahan</label>
+            <textarea value={topUpNote} onChange={(e) => setTopUpNote(e.target.value)} className="min-h-[92px] w-full rounded-lg border px-3 py-2" placeholder="Contoh: nominal sesuai / upload ulang bila bukti kurang jelas" />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (!targetUserId || !registration) return
+                const key = `mg26_registration_${targetUserId}`
+                const requestedSlots = Math.max(0, Number(registration.extraAthleteAccess?.requestedSlots ?? 0))
+                const normalizedApprovedSlots = extraStatus === "OPEN" ? Math.max(1, Number(approvedSlots || requestedSlots || 0)) : 0
+                const normalizedTopUpStatus = extraStatus === "OPEN" ? (topUpStatus === "NONE" ? "REQUIRED" : topUpStatus) : "NONE"
+                const updated = withExtraFlow({
+                  ...registration,
+                  status: extraStatus === "REQUESTED" ? "EXTRA_ACCESS_REQUESTED" : extraStatus === "OPEN" && normalizedTopUpStatus === "APPROVED" ? "TOP_UP_APPROVED" : extraStatus === "OPEN" && normalizedTopUpStatus === "PENDING" ? "TOP_UP_PENDING" : extraStatus === "OPEN" ? "TOP_UP_REQUIRED" : extraStatus === "CLOSED" ? "PAYMENT_APPROVED" : registration.status,
+                  extraAthleteAccess: {
+                    ...registration.extraAthleteAccess,
+                    status: extraStatus,
+                    approvedSlots: normalizedApprovedSlots,
+                    adminNote: extraNote.trim() ? extraNote.trim() : undefined,
+                    approvedAt: extraStatus === "OPEN" ? new Date().toISOString() : registration.extraAthleteAccess?.approvedAt,
+                    approvedBy: extraStatus === "OPEN" ? adminUser?.email : registration.extraAthleteAccess?.approvedBy,
+                  },
+                  topUpPayment: {
+                    ...registration.topUpPayment,
+                    status: normalizedTopUpStatus,
+                    additionalAthletes: normalizedApprovedSlots,
+                    additionalFee: normalizedApprovedSlots * 100000,
+                    note: topUpNote.trim() ? topUpNote.trim() : undefined,
+                    approvedAt: normalizedTopUpStatus === "APPROVED" ? new Date().toISOString() : registration.topUpPayment?.approvedAt,
+                    approvedBy: normalizedTopUpStatus === "APPROVED" ? adminUser?.email : registration.topUpPayment?.approvedBy,
+                  },
+                } as any) as unknown as Registration
+                localStorage.setItem(key, JSON.stringify(updated))
+                setRegistration(updated)
+                alert("Status pengajuan tambahan peserta berhasil disimpan.")
+              }}
+              className="rounded-lg bg-green-600 px-5 py-2 text-sm font-extrabold text-white hover:bg-green-700"
+            >
+              Simpan Pengajuan Tambahan
+            </button>
+            <div className="text-xs text-gray-500">Urutan status: menunggu verifikasi admin - menunggu pembayaran tambahan - siap isi kuota tambahan.</div>
+          </div>
+        </div>
+      )}
       {preview.open && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-5xl overflow-hidden rounded-2xl border bg-white shadow-xl">
@@ -338,6 +460,7 @@ export default function AdminPembayaranPage() {
               {!preview.loading && !preview.error && preview.url && isImageMime(preview.mime) && (
                 <div className="flex justify-center">
                   
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={preview.url} alt="Bukti pembayaran" className="max-h-[70vh] rounded-xl border object-contain" />
                 </div>
               )}

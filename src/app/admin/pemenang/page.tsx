@@ -1,231 +1,260 @@
-"use client"
+﻿"use client"
 
+import Link from "next/link"
 import { useAuth } from "@/context/AuthContext"
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
+import { SPORTS_CATALOG } from "@/data/sportsCatalog"
+import { buildMedalTable, getWinnerResults, saveWinnerResults, type WinnerResult } from "@/lib/winnerResults"
 
-type MedalRow = {
-  id: string // userId kontingen
-  name: string // institutionName
-  gold: number
-  silver: number
-  bronze: number
+type PlacementForm = {
+  institutionId: string
+  institutionName: string
 }
 
-const LS_MEDAL_TABLE = "mg26_medal_table"
+function todayValue() {
+  return new Date().toISOString().slice(0, 10)
+}
 
-function safeParse<T>(value: string | null, fallback: T): T {
-  try {
-    if (!value) return fallback
-    return JSON.parse(value) as T
-  } catch {
-    return fallback
-  }
+function emptyPlacement(): PlacementForm {
+  return { institutionId: "", institutionName: "" }
 }
 
 export default function AdminPemenangPage() {
   const { getAllUsers } = useAuth()
 
-  const pesertaUsers = useMemo(() => {
-    return getAllUsers().filter((u) => u.role === "PESERTA")
-  }, [getAllUsers])
-
-  const [table, setTable] = useState<MedalRow[]>([])
-  const [selectedUserId, setSelectedUserId] = useState<string>("")
-  const [gold, setGold] = useState<number>(0)
-  const [silver, setSilver] = useState<number>(0)
-  const [bronze, setBronze] = useState<number>(0)
+  const pesertaUsers = useMemo(() => getAllUsers().filter((u) => u.role === "PESERTA"), [getAllUsers])
+  const [results, setResults] = useState<WinnerResult[]>([])
   const [message, setMessage] = useState<string | null>(null)
+  const [date, setDate] = useState(todayValue())
+  const [sportId, setSportId] = useState(SPORTS_CATALOG[0]?.id ?? "")
+  const [categoryId, setCategoryId] = useState(SPORTS_CATALOG[0]?.categories[0]?.id ?? "")
+  const [gold, setGold] = useState<PlacementForm>(emptyPlacement())
+  const [silver, setSilver] = useState<PlacementForm>(emptyPlacement())
+  const [bronze, setBronze] = useState<PlacementForm>(emptyPlacement())
 
   useEffect(() => {
-    const data = safeParse<MedalRow[]>(localStorage.getItem(LS_MEDAL_TABLE), [])
-    setTable(data)
+    setResults(getWinnerResults())
   }, [])
 
-  useEffect(() => {
-    if (pesertaUsers.length > 0 && !selectedUserId) {
-      setSelectedUserId(pesertaUsers[0].id)
-    }
-  }, [pesertaUsers, selectedUserId])
+  const selectedSport = useMemo(() => SPORTS_CATALOG.find((sport) => sport.id === sportId) ?? null, [sportId])
 
   useEffect(() => {
-    if (!selectedUserId) return
-    const existing = table.find((r) => r.id === selectedUserId)
-    if (existing) {
-      setGold(existing.gold)
-      setSilver(existing.silver)
-      setBronze(existing.bronze)
-    } else {
-      setGold(0)
-      setSilver(0)
-      setBronze(0)
+    if (!selectedSport) return
+    if (!selectedSport.categories.some((category) => category.id === categoryId)) {
+      setCategoryId(selectedSport.categories[0]?.id ?? "")
     }
-  }, [selectedUserId, table])
+  }, [selectedSport, categoryId])
 
-  const selectedUser = useMemo(() => {
-    return pesertaUsers.find((u) => u.id === selectedUserId) ?? null
-  }, [pesertaUsers, selectedUserId])
+  const selectedCategory = useMemo(() => {
+    return selectedSport?.categories.find((category) => category.id === categoryId) ?? null
+  }, [selectedSport, categoryId])
 
-  const saveTable = (next: MedalRow[]) => {
-    setTable(next)
-    localStorage.setItem(LS_MEDAL_TABLE, JSON.stringify(next))
+  const medalTable = useMemo(() => {
+    return buildMedalTable(results).map((row) => ({ ...row, total: row.gold + row.silver + row.bronze }))
+  }, [results])
+
+  const handlePlacementChange = (
+    setter: React.Dispatch<React.SetStateAction<PlacementForm>>,
+    institutionId: string
+  ) => {
+    const selected = pesertaUsers.find((user) => user.id === institutionId)
+    setter({ institutionId, institutionName: selected?.institutionName ?? "" })
   }
 
   const handleSave = () => {
-    if (!selectedUser) return
-
-    const nextRow: MedalRow = {
-      id: selectedUser.id,
-      name: selectedUser.institutionName,
-      gold: Math.max(0, Number(gold) || 0),
-      silver: Math.max(0, Number(silver) || 0),
-      bronze: Math.max(0, Number(bronze) || 0),
+    if (!selectedSport || !selectedCategory) return
+    if (!gold.institutionId || !silver.institutionId || !bronze.institutionId) {
+      setMessage("Lengkapi juara 1, 2, dan 3 terlebih dahulu.")
+      return
     }
 
-    const exists = table.some((r) => r.id === selectedUser.id)
-    const next = exists
-      ? table.map((r) => (r.id === selectedUser.id ? nextRow : r))
-      : [nextRow, ...table]
+    const ids = [gold.institutionId, silver.institutionId, bronze.institutionId]
+    if (new Set(ids).size !== ids.length) {
+      setMessage("Juara 1, 2, dan 3 harus berasal dari kontingen yang berbeda.")
+      return
+    }
 
-    saveTable(next)
-    setMessage("Data medali berhasil disimpan.")
-    setTimeout(() => setMessage(null), 1200)
+    const id = `${date}_${sportId}_${categoryId}`
+    const nextRow: WinnerResult = {
+      id,
+      date,
+      sportId: selectedSport.id,
+      sportName: selectedSport.name,
+      categoryId: selectedCategory.id,
+      categoryName: selectedCategory.name,
+      gold,
+      silver,
+      bronze,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+
+    const next = results.some((item) => item.id === id)
+      ? results.map((item) => (item.id === id ? { ...nextRow, createdAt: item.createdAt } : item))
+      : [nextRow, ...results]
+
+    setResults(next)
+    saveWinnerResults(next)
+    setMessage("Hasil lomba berhasil disimpan. Tabel medali dihitung otomatis.")
+    setGold(emptyPlacement())
+    setSilver(emptyPlacement())
+    setBronze(emptyPlacement())
+    setTimeout(() => setMessage(null), 1600)
+  }
+
+  const handleDelete = (id: string) => {
+    const next = results.filter((item) => item.id !== id)
+    setResults(next)
+    saveWinnerResults(next)
+    setMessage("Hasil lomba dihapus. Tabel medali diperbarui otomatis.")
+    setTimeout(() => setMessage(null), 1600)
   }
 
   const handleReset = () => {
-    if (!confirm("Reset semua data medali?")) return
-    saveTable([])
-    setMessage("Tabel medali direset.")
-    setTimeout(() => setMessage(null), 1200)
+    if (!window.confirm("Reset semua hasil lomba dan tabel medali otomatis?")) return
+    setResults([])
+    saveWinnerResults([])
+    setMessage("Semua hasil lomba direset.")
+    setTimeout(() => setMessage(null), 1600)
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <div className="bg-white border rounded-xl p-6 shadow-sm">
-        <h1 className="text-2xl font-bold">Pemenang & Peringkat Medali</h1>
-        <p className="text-gray-600 mt-2">
-          Upload pemenang lomba
-        </p>
+    <div className="max-w-6xl space-y-6">
+      <div className="rounded-xl border bg-white p-6 shadow-sm">
+        <h1 className="text-2xl font-bold text-gray-900">Pemenang & Peringkat Medali</h1>
+        <p className="mt-2 text-gray-600">Admin cukup input pemenang lomba per kategori setiap hari. Sistem otomatis menghitung perolehan medali setiap kontingen.</p>
 
-        <div className="mt-4 flex gap-3 flex-wrap">
-          <Link
-            href="/peringkat"
-            className="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700"
-          >
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Link href="/peringkat" className="rounded-lg bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700">
             Buka Halaman Peringkat
           </Link>
-          <button
-            onClick={handleReset}
-            className="px-4 py-2 rounded-lg bg-red-50 text-red-700 font-semibold hover:bg-red-100"
-          >
-            Reset Tabel Medali
+          <button onClick={handleReset} className="rounded-lg bg-red-50 px-4 py-2 font-semibold text-red-700 hover:bg-red-100">
+            Reset Semua Hasil
           </button>
         </div>
 
-        {message && (
-          <div className="mt-4 p-3 rounded bg-green-50 border border-green-200 text-green-700 text-sm">
-            {message}
-          </div>
-        )}
+        {message ? <div className="mt-4 rounded border border-green-200 bg-green-50 p-3 text-sm text-green-700">{message}</div> : null}
       </div>
 
-      <div className="bg-white border rounded-xl p-6 shadow-sm space-y-4">
-        <h2 className="text-lg font-bold">Update Medali Kontingen</h2>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-xl border bg-white p-6 shadow-sm space-y-4">
+          <h2 className="text-lg font-bold text-gray-900">Input Hasil Lomba</h2>
 
-        {pesertaUsers.length === 0 ? (
-          <div className="text-sm text-gray-500">Belum ada akun PESERTA.</div>
-        ) : (
-          <select
-            value={selectedUserId}
-            onChange={(e) => setSelectedUserId(e.target.value)}
-            className="w-full border rounded-lg px-3 py-2"
-          >
-            {pesertaUsers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.institutionName} — {u.email}
-              </option>
-            ))}
-          </select>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-semibold mb-1">🥇 Emas</label>
-            <input
-              type="number"
-              min={0}
-              value={gold}
-              onChange={(e) => setGold(Number(e.target.value))}
-              className="w-full border rounded-lg px-3 py-2"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold mb-1">🥈 Perak</label>
-            <input
-              type="number"
-              min={0}
-              value={silver}
-              onChange={(e) => setSilver(Number(e.target.value))}
-              className="w-full border rounded-lg px-3 py-2"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold mb-1">🥉 Perunggu</label>
-            <input
-              type="number"
-              min={0}
-              value={bronze}
-              onChange={(e) => setBronze(Number(e.target.value))}
-              className="w-full border rounded-lg px-3 py-2"
-            />
-          </div>
-        </div>
-
-        <button
-          onClick={handleSave}
-          className="px-5 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700"
-          disabled={!selectedUser}
-        >
-          Simpan Medali
-        </button>
-
-        <div className="text-xs text-gray-500">
-          Kontingen: <b>{selectedUser?.institutionName ?? "-"}</b>
-        </div>
-      </div>
-
-      <div className="bg-white border rounded-xl p-6 shadow-sm">
-        <h2 className="text-lg font-bold mb-3">Preview Tabel Medali (tersimpan)</h2>
-
-        {table.length === 0 ? (
-          <div className="text-sm text-gray-500">Belum ada data medali.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left border-b">
-                  <th className="py-3 pr-3">Kontingen</th>
-                  <th className="py-3 pr-3">🥇</th>
-                  <th className="py-3 pr-3">🥈</th>
-                  <th className="py-3 pr-3">🥉</th>
-                </tr>
-              </thead>
-              <tbody>
-                {table.map((r) => (
-                  <tr key={r.id} className="border-b last:border-b-0">
-                    <td className="py-3 pr-3">
-                      <div className="font-semibold">{r.name}</div>
-                      <div className="text-xs text-gray-500">{r.id}</div>
-                    </td>
-                    <td className="py-3 pr-3 font-semibold">{r.gold}</td>
-                    <td className="py-3 pr-3 font-semibold">{r.silver}</td>
-                    <td className="py-3 pr-3 font-semibold">{r.bronze}</td>
-                  </tr>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-gray-700">Tanggal Lomba</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border px-3 py-2" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-gray-700">Cabang Olahraga</label>
+              <select value={sportId} onChange={(e) => setSportId(e.target.value)} className="w-full rounded-lg border px-3 py-2">
+                {SPORTS_CATALOG.map((sport) => (
+                  <option key={sport.id} value={sport.id}>{sport.name}</option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-gray-700">Kategori Lomba</label>
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full rounded-lg border px-3 py-2">
+              {(selectedSport?.categories ?? []).map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-yellow-700">Juara 1 / Emas</label>
+              <select value={gold.institutionId} onChange={(e) => handlePlacementChange(setGold, e.target.value)} className="w-full rounded-lg border px-3 py-2">
+                <option value="">Pilih kontingen</option>
+                {pesertaUsers.map((user) => (
+                  <option key={user.id} value={user.id}>{user.institutionName}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-slate-700">Juara 2 / Perak</label>
+              <select value={silver.institutionId} onChange={(e) => handlePlacementChange(setSilver, e.target.value)} className="w-full rounded-lg border px-3 py-2">
+                <option value="">Pilih kontingen</option>
+                {pesertaUsers.map((user) => (
+                  <option key={user.id} value={user.id}>{user.institutionName}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-amber-700">Juara 3 / Perunggu</label>
+              <select value={bronze.institutionId} onChange={(e) => handlePlacementChange(setBronze, e.target.value)} className="w-full rounded-lg border px-3 py-2">
+                <option value="">Pilih kontingen</option>
+                {pesertaUsers.map((user) => (
+                  <option key={user.id} value={user.id}>{user.institutionName}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <button onClick={handleSave} className="rounded-lg bg-green-600 px-5 py-2 font-semibold text-white hover:bg-green-700">
+            Simpan Hasil Lomba
+          </button>
+        </div>
+
+        <div className="rounded-xl border bg-white p-6 shadow-sm">
+          <h2 className="mb-3 text-lg font-bold text-gray-900">Preview Tabel Medali Otomatis</h2>
+          {medalTable.length === 0 ? (
+            <div className="text-sm text-gray-500">Belum ada hasil lomba tersimpan.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="py-3 pr-3">Kontingen</th>
+                    <th className="py-3 pr-3">Emas</th>
+                    <th className="py-3 pr-3">Perak</th>
+                    <th className="py-3 pr-3">Perunggu</th>
+                    <th className="py-3 pr-3">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {medalTable.map((row) => (
+                    <tr key={row.id} className="border-b last:border-b-0">
+                      <td className="py-3 pr-3 font-semibold">{row.name}</td>
+                      <td className="py-3 pr-3">{row.gold}</td>
+                      <td className="py-3 pr-3">{row.silver}</td>
+                      <td className="py-3 pr-3">{row.bronze}</td>
+                      <td className="py-3 pr-3 font-bold">{row.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-white p-6 shadow-sm">
+        <h2 className="mb-3 text-lg font-bold text-gray-900">Daftar Hasil Lomba Tersimpan</h2>
+        {results.length === 0 ? (
+          <div className="text-sm text-gray-500">Belum ada hasil lomba.</div>
+        ) : (
+          <div className="space-y-3">
+            {results.map((result) => (
+              <div key={result.id} className="rounded-lg border p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="font-bold text-gray-900">{result.sportName}</div>
+                    <div className="text-sm text-gray-600">{result.categoryName}</div>
+                    <div className="mt-1 text-xs text-gray-500">Tanggal: {result.date}</div>
+                    <div className="mt-3 text-sm text-gray-700">Emas: <b>{result.gold?.institutionName ?? "-"}</b></div>
+                    <div className="text-sm text-gray-700">Perak: <b>{result.silver?.institutionName ?? "-"}</b></div>
+                    <div className="text-sm text-gray-700">Perunggu: <b>{result.bronze?.institutionName ?? "-"}</b></div>
+                  </div>
+                  <button onClick={() => handleDelete(result.id)} className="rounded-lg bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100">
+                    Hapus Hasil
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

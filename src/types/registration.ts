@@ -15,8 +15,6 @@ export type Category = {
   label: string
   name?: string
   type: CategoryType
-
-  // jumlah entry yang diisi pada Step 1
   quota: number
 }
 
@@ -30,20 +28,25 @@ export type Sport = {
 // DATA ATLET (STEP 3)
 // =============================
 
+export type AthletePricingStatus = "INITIAL_PAID" | "PENDING_TOP_UP" | "TOP_UP_PAID"
+export type AthleteSource = "INITIAL_QUOTA" | "EXTRA_ACCESS"
+
+export type AthleteRegistrationState = {
+  pricingStatus: AthletePricingStatus
+  source: AthleteSource
+  isActive: boolean
+}
+
 export type Athlete = {
   id: string
-
-  // relasi
   sportId: string
   categoryId: string
-
-  // data pribadi
   name: string
   gender: Gender
   birthDate: string
   institution: string
   nisnOrNim?: string
-
+  registrationState?: AthleteRegistrationState
   createdAt: string
 }
 
@@ -63,12 +66,11 @@ export type DocumentItem = {
   mimeType?: string
   uploadedAt?: string
   status: DocumentStatus
-  note?: string // catatan admin jika ditolak
+  note?: string
 }
 
 export type AthleteDocuments = {
   athleteId: string
-
   dapodik: DocumentItem
   ktp: DocumentItem
   kartu: DocumentItem
@@ -94,7 +96,46 @@ export type Payment = {
   uploadedAt?: string
   totalFee: number
   approvedTotalFee?: number
-  note?: string // catatan admin jika reject
+  note?: string
+}
+
+export type ExtraAthleteAccessStatus = "NONE" | "REQUESTED" | "OPEN" | "CLOSED"
+
+export type ExtraAthleteAccessItem = {
+  sportId: string
+  sportName: string
+  requestedSlots: number
+  approvedSlots?: number
+}
+
+export type ExtraAthleteAccess = {
+  status: ExtraAthleteAccessStatus
+  requestedAt?: string
+  requestedSlots?: number
+  requestedSportId?: string
+  requestedSportName?: string
+  requestItems?: ExtraAthleteAccessItem[]
+  requestedReason?: string
+  approvedAt?: string
+  approvedBy?: string
+  approvedSlots?: number
+  expiresAt?: string
+  adminNote?: string
+}
+
+export type TopUpPaymentStatus = "NONE" | "REQUIRED" | "PENDING" | "APPROVED" | "REJECTED"
+
+export type TopUpPayment = {
+  status: TopUpPaymentStatus
+  additionalAthletes: number
+  additionalFee: number
+  proofFileId?: string
+  proofFileName?: string
+  proofMimeType?: string
+  uploadedAt?: string
+  approvedAt?: string
+  approvedBy?: string
+  note?: string
 }
 
 // =============================
@@ -106,6 +147,12 @@ export type RegistrationStatus =
   | "WAITING_PAYMENT_UPLOAD"
   | "WAITING_PAYMENT_VERIFICATION"
   | "PAYMENT_APPROVED"
+  | "EXTRA_ACCESS_REQUESTED"
+  | "EXTRA_ACCESS_OPEN"
+  | "TOP_UP_REQUIRED"
+  | "TOP_UP_PENDING"
+  | "TOP_UP_APPROVED"
+  | "TOP_UP_REJECTED"
   | "ATHLETE_DATA_IN_PROGRESS"
   | "DOCS_IN_PROGRESS"
   | "WAITING_DOC_VERIFICATION"
@@ -118,17 +165,16 @@ export type RegistrationStatus =
 export type Registration = {
   id: string
   userId: string
-
   sports: Sport[]
   officials: number
-
   athletes: Athlete[]
   documents: AthleteDocuments[]
-
   payment: Payment
-
+  approvedAthleteQuota?: number
+  activeAthleteCount?: number
+  extraAthleteAccess?: ExtraAthleteAccess
+  topUpPayment?: TopUpPayment
   status: RegistrationStatus
-
   createdAt: string
   updatedAt: string
 }
@@ -143,9 +189,7 @@ export type Winner = {
   id: string
   sportId: string
   categoryId: string
-
   position: 1 | 2 | 3
   medal: MedalType
-
   institutionName: string
 }

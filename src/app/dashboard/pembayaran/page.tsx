@@ -3,12 +3,17 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useRegistration } from "@/context/RegistrationContext"
+import type { RegistrationState as DraftRegistrationState } from "@/context/RegistrationContext"
 import { useAuth } from "@/context/AuthContext"
 import { putFileBlob } from "@/lib/fileStore" 
+import { getTopUp, withExtraFlow } from "@/lib/extraAthleteFlow"
+import type { Registration } from "@/types/registration"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card"
 import { Badge } from "@/components/ui/Badge"
 import { Button } from "@/components/ui/Button"
 import { Textarea } from "@/components/ui/Textarea"
+
+type HybridRegistrationState = DraftRegistrationState & Partial<Registration>
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ")
@@ -37,24 +42,30 @@ export default function Step2PembayaranPage() {
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [note, setNote] = useState<string>("")
   const [selectedProofFile, setSelectedProofFile] = useState<File | null>(null)
+  const [selectedTopUpFile, setSelectedTopUpFile] = useState<File | null>(null)
+  const [isSubmittingTopUp, setIsSubmittingTopUp] = useState(false)
   const [isSubmittingProof, setIsSubmittingProof] = useState(false)
-
+  const hybridState = state as HybridRegistrationState
 
   useEffect(() => {
     setNote(state.payment.note ?? "")
   }, [state.payment.note])
   const selectedSportsCount = state.sports.length
+  const topUp = getTopUp(hybridState)
+
 
   const canUpload = useMemo(() => {
     // harus pilih minimal 1 cabor dulu
     if (selectedSportsCount === 0) return false
     // jika sudah APPROVED, peserta tidak perlu upload ulang
     if (state.payment.status === "APPROVED") return false
+
     return true
   }, [selectedSportsCount, state.payment.status])
 
-  const onPickProof = (file: File | null) => {
+  const canUploadTopUp = topUp.additionalAthletes > 0 && (topUp.status === "REQUIRED" || topUp.status === "REJECTED")
 
+  const onPickProof = (file: File | null) => {
     if (!file) {
       setSelectedProofFile(null)
       return
@@ -69,7 +80,7 @@ export default function Step2PembayaranPage() {
 
     const maxMB = 5
     if (file.size > maxMB * 1024 * 1024) {
-      setMsg({ type: "error", text: `Ukuran file terlalu besar. Maks ${maxMB}MB.` })
+      setMsg({ type: "error", text: "Ukuran file terlalu besar. Maks " + maxMB + "MB." })
       setSelectedProofFile(null)
       return
     }
@@ -89,6 +100,7 @@ export default function Step2PembayaranPage() {
       setSelectedProofFile(null)
       setMsg({
         type: "success",
+
         text: "Bukti pembayaran tersimpan. Status berubah menjadi PENDING (menunggu verifikasi admin).",
       })
     } catch (e) {
@@ -97,6 +109,56 @@ export default function Step2PembayaranPage() {
     } finally {
       setIsSubmittingProof(false)
     }
+  }
+
+  const onSubmitTopUp = async () => {
+    if (!selectedTopUpFile || !canUploadTopUp) return
+
+    setMsg(null)
+    setIsSubmittingTopUp(true)
+    try {
+      const fileId = "topup_user_" + Date.now() + "_" + Math.random().toString(16).slice(2)
+      await putFileBlob(fileId, selectedTopUpFile)
+      const updated = withExtraFlow({
+        ...hybridState,
+        status: "TOP_UP_PENDING",
+        topUpPayment: {
+          ...hybridState.topUpPayment,
+          status: "PENDING",
+          additionalAthletes: topUp.additionalAthletes,
+          additionalFee: topUp.additionalFee,
+          proofFileId: fileId,
+          proofFileName: selectedTopUpFile.name,
+          proofMimeType: selectedTopUpFile.type || "application/octet-stream",
+          uploadedAt: new Date().toISOString(),
+          note: hybridState.topUpPayment?.note,
+        },
+      })
+      dispatch({ type: "LOAD", payload: updated as DraftRegistrationState })
+      setSelectedTopUpFile(null)
+      setMsg({ type: "success", text: "Bukti top-up tersimpan. Menunggu verifikasi admin." })
+      setMsg({ type: "success", text: "Bukti top-up tersimpan. Menunggu verifikasi admin." })
+    } catch (e) {
+      console.error(e)
+      setMsg({ type: "error", text: "Gagal menyimpan bukti top-up. Coba ulangi." })
+    } finally {
+      setIsSubmittingTopUp(false)
+    }
+  }
+
+  const onPickTopUp = (file: File | null) => {
+    if (!file) {
+      setSelectedTopUpFile(null)
+      return
+    }
+    setMsg(null)
+    const maxMB = 5
+    if (file.size > maxMB * 1024 * 1024) {
+      setMsg({ type: "error", text: "Ukuran file terlalu besar. Maks " + maxMB + "MB." })
+      setSelectedTopUpFile(null)
+      return
+    }
+    setSelectedTopUpFile(file)
   }
 
   if (!hydrateReady) {
@@ -270,6 +332,15 @@ export default function Step2PembayaranPage() {
               )}
             </div>
 
+            <div className="rounded-2xl border bg-amber-50/60 p-4">
+              <div className="text-xs text-gray-500">Top-up tambahan atlet</div>
+              <div className="mt-1 text-sm font-extrabold text-gray-900">Status: {topUp.status} | Atlet: {topUp.additionalAthletes} | Nominal: Rp {topUp.additionalFee.toLocaleString("id-ID")}</div>
+              <input type="file" accept="image/*,application/pdf" disabled={!canUploadTopUp || isSubmittingTopUp} onChange={(e) => onPickTopUp(e.target.files?.[0] ?? null)} className="mt-3 w-full rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm" />
+              <div className="mt-2 text-xs text-gray-600">File top-up dipilih: <b>{selectedTopUpFile?.name ?? "-"}</b></div>
+              <Button variant="primary" className="mt-3 w-full" disabled={!canUploadTopUp || !selectedTopUpFile || isSubmittingTopUp} onClick={onSubmitTopUp}>
+                {isSubmittingTopUp ? "Menyimpan Top-up..." : "Submit Bukti Top-up"}
+              </Button>
+            </div>
             <Textarea
               label="Catatan Peserta (opsional)"
               value={note}

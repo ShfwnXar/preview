@@ -4,10 +4,16 @@ import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useAuth } from "@/context/AuthContext"
 import { useRegistration } from "@/context/RegistrationContext"
+import type { RegistrationState as DraftRegistrationState } from "@/context/RegistrationContext"
+import { getApprovedAthleteQuota, getActiveAthleteCount, getExtraAccess, getPendingTopUpCount, getTopUp } from "@/lib/extraAthleteFlow"
+import type { Registration } from "@/types/registration"
+import { readRevisionMode, writeRevisionMode } from "@/lib/registrationFlow"
 
 type DocKey = "dapodik" | "ktp" | "kartu" | "raport" | "foto"
 
 const DOC_KEYS: DocKey[] = ["dapodik", "ktp", "kartu", "raport", "foto"]
+type HybridRegistrationState = DraftRegistrationState & Partial<Registration>
+
 
 function Badge({
   text,
@@ -46,14 +52,23 @@ function formatISO(iso?: string) {
 export default function StatusPage() {
   const { user } = useAuth()
   const { state, hydrateReady, dispatch } = useRegistration()
+  const hybridState = state as HybridRegistrationState
+  const approvedAthleteQuota = getApprovedAthleteQuota(hybridState)
+  const activeAthleteCount = getActiveAthleteCount(hybridState)
+  const pendingTopUpCount = getPendingTopUpCount(hybridState)
+  const extraAccess = getExtraAccess(hybridState)
+  const topUp = getTopUp(hybridState)
   const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const paymentStatus = state.payment.status
   const paymentApproved = paymentStatus === "APPROVED"
+  const revisionOpen = user ? readRevisionMode(user.id) : false
+  const canAccessAthleteFlow = paymentApproved || revisionOpen
 
   const handleReopenRegistration = () => {
     const ok = window.confirm("Buka revisi pendaftaran? Step 1 akan terbuka lagi dan Anda perlu melakukan pembayaran ulang setelah revisi kuota.")
     if (!ok) return
 
+    if (user) writeRevisionMode(user.id, true)
     dispatch({ type: "SET_PAYMENT_STATUS", status: "NONE" })
     setActionMsg({ type: "success", text: "Mode revisi dibuka. Silakan ubah kuota di Step 1, lalu lanjutkan pembayaran ulang di Step 2." })
   }
@@ -147,7 +162,7 @@ export default function StatusPage() {
       const d = state.documents.find((x) => x.athleteId === a.id)
       let uploaded = 0
       for (const k of DOC_KEYS) {
-        const file = (d as any)?.[k]
+        const file = d?.[k]
         if (file?.status && file.status !== "EMPTY") uploaded += 1
       }
       return {
@@ -223,6 +238,10 @@ export default function StatusPage() {
                 text={`Total Biaya: Rp ${state.payment.totalFee.toLocaleString()}`}
                 variant="gray"
               />
+              <Badge text={"Kuota Terbayar: " + approvedAthleteQuota} variant="gray" />
+              <Badge text={"Atlet Aktif: " + activeAthleteCount} variant="gray" />
+              {pendingTopUpCount > 0 ? <Badge text={"Pending Top-up: " + pendingTopUpCount} variant="yellow" /> : null}
+              {extraAccess.status !== "NONE" ? <Badge text={"Akses Tambahan: " + extraAccess.status} variant={extraAccess.status === "OPEN" ? "green" : "yellow"} /> : null}
               {user?.institutionName ? (
                 <Badge text={user.institutionName} variant="gray" />
               ) : null}
@@ -257,7 +276,7 @@ export default function StatusPage() {
                     : "bg-gray-200 text-gray-600 cursor-not-allowed"
                 }`}
                 onClick={(e) => {
-                  if (!paymentApproved) {
+                  if (!canAccessAthleteFlow) {
                     e.preventDefault()
                     alert("Step 3 hanya bisa dibuka setelah pembayaran APPROVED.")
                   }
@@ -342,6 +361,15 @@ export default function StatusPage() {
 
       {/* Pembayaran Detail */}
       <div className="bg-white border rounded-xl p-6 shadow-sm">
+      <div className="bg-white border rounded-xl p-6 shadow-sm">
+        <div className="text-lg font-extrabold text-gray-900">Status Tambahan Atlet</div>
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="rounded-xl border p-4"><div className="text-xs text-gray-500">Kuota Terbayar</div><div className="mt-2 text-2xl font-extrabold text-gray-900">{approvedAthleteQuota}</div></div>
+          <div className="rounded-xl border p-4"><div className="text-xs text-gray-500">Atlet Aktif</div><div className="mt-2 text-2xl font-extrabold text-gray-900">{activeAthleteCount}</div></div>
+          <div className="rounded-xl border p-4"><div className="text-xs text-gray-500">Akses Tambahan</div><div className="mt-2 text-sm font-extrabold text-gray-900">{extraAccess.status}</div></div>
+          <div className="rounded-xl border p-4"><div className="text-xs text-gray-500">Top-up</div><div className="mt-2 text-sm font-extrabold text-gray-900">{topUp.status}{topUp.additionalFee > 0 ? " - Rp " + topUp.additionalFee.toLocaleString() : ""}</div></div>
+        </div>
+      </div>
         <div className="text-lg font-extrabold text-gray-900">Detail Pembayaran</div>
 
         <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">

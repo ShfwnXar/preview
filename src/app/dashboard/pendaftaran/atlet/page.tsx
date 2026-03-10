@@ -6,6 +6,17 @@ import { useEffect, useMemo, useState } from "react"
 import { useRegistration } from "@/context/RegistrationContext"
 import { SPORTS_CATALOG } from "@/data/sportsCatalog"
 import type { AthleteDocuments } from "@/types/registration"
+import { useAuth } from "@/context/AuthContext"
+import { readRevisionMode } from "@/lib/registrationFlow"
+import {
+  getActiveAthleteCount,
+  getApprovedAthleteQuota,
+  getApprovedExtraSlotsForSport,
+  getExtraAccess,
+  getPendingTopUpCount,
+  getUsedExtraSlotsForSport,
+  getTopUp,
+} from "@/lib/extraAthleteFlow"
 
 type Gender = "PUTRA" | "PUTRI"
 
@@ -30,9 +41,6 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ")
 }
 
-function uid(prefix = "ath") {
-  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`
-}
 
 // Infer roster size kalau catalog belum punya rosterSize
 function inferRosterSize(sportId: string, category?: CatalogCategory | null) {
@@ -97,9 +105,16 @@ function isAthleteComplete(a: any, doc: AthleteDocuments | undefined | null) {
 }
 
 export default function Step3AtletPage() {
+  const { user } = useAuth()
   const { state, hydrateReady, addAthlete, removeAthlete, addOfficial, removeOfficial } = useRegistration()
+  const revisionOpen = user ? readRevisionMode(user.id) : false
 
-  const paymentApproved = state.payment.status === "APPROVED"
+  const paymentApproved = state.payment.status === "APPROVED" || revisionOpen
+  const approvedAthleteQuota = getApprovedAthleteQuota(state as any)
+  const activeAthleteCount = getActiveAthleteCount(state as any)
+  const pendingTopUpCount = getPendingTopUpCount(state as any)
+  const extraAccess = getExtraAccess(state as any)
+  const topUp = getTopUp(state as any)
 
   const [selectedSportId, setSelectedSportId] = useState<string>("")
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("")
@@ -177,6 +192,11 @@ export default function Step3AtletPage() {
   }, [state.sports])
 
   const totalFilled = useMemo(() => (state.athletes || []).length, [state.athletes])
+  const initialAthletesCount = useMemo(() => (state.athletes || []).filter((a: any) => a?.registrationState?.source !== "EXTRA_ACCESS").length, [state.athletes])
+  const approvedExtraSlotsForSport = useMemo(() => getApprovedExtraSlotsForSport(state as any, selectedSportId), [state, selectedSportId])
+  const usedExtraSlotsForSport = useMemo(() => getUsedExtraSlotsForSport(state as any, selectedSportId), [state, selectedSportId])
+  const extraSlotsRemaining = Math.max(0, approvedExtraSlotsForSport - usedExtraSlotsForSport)
+  const paidSlotsRemaining = Math.max(0, approvedAthleteQuota - initialAthletesCount)
 
   // ==== kategori summary card ====
   const categorySummary = useMemo(() => {
@@ -286,35 +306,71 @@ export default function Step3AtletPage() {
     return athleteForms.every((a) => a.name.trim().length > 0 && String(a.birthDate || "").trim().length > 0)
   }, [athleteForms])
 
-  const canAddRoster =
+  const needRoster = Math.max(1, rosterSize || 1)
+  const canUsePaidSlots =
     paymentApproved &&
     !!selectedSportId &&
     !!selectedCategoryId &&
     rosterFieldsValid &&
-    remainingInSport >= (rosterSize || 1) &&
-    remainingInCategory >= (rosterSize || 1)
+    paidSlotsRemaining >= needRoster &&
+    remainingInCategory >= needRoster
+
+  const canUseExtraSlots =
+    paymentApproved &&
+    !!selectedSportId &&
+    !!selectedCategoryId &&
+    rosterFieldsValid &&
+    extraAccess.status === "OPEN" &&
+    topUp.status === "APPROVED" &&
+    extraSlotsRemaining >= needRoster &&
+    remainingInCategory >= needRoster
+
+  const canAddRoster = canUsePaidSlots || canUseExtraSlots
 
   const handleAddRoster = () => {
     if (!paymentApproved) return alert("Belum bisa input atlet: pembayaran harus APPROVED.")
     if (!selectedSportId) return alert("Pilih cabor terlebih dahulu.")
     if (!selectedCategoryId) return alert("Pilih kategori/kelas/nomor terlebih dahulu.")
 
-    const need = Math.max(1, rosterSize || 1)
-    if (remainingInSport < need) {
-      alert(`Kuota cabor tidak cukup. Sisa kuota: ${Math.max(0, remainingInSport)} (butuh ${need}).`)
+    if (remainingInCategory < needRoster) {
+      alert(`Kuota kategori tidak cukup. Sisa kuota kategori: ${Math.max(0, Number.isFinite(remainingInCategory) ? remainingInCategory : 0)} (butuh ${needRoster}).`)
       return
     }
 
-    if (remainingInCategory < need) {
-      alert(`Kuota kategori tidak cukup. Sisa kuota kategori: ${Math.max(0, Number.isFinite(remainingInCategory) ? remainingInCategory : 0)} (butuh ${need}).`)
+    if (!canUsePaidSlots && !canUseExtraSlots) {
+      alert("Slot terbayar habis. Ajukan tambah peserta, tunggu persetujuan admin, lalu selesaikan pembayaran tambahan terlebih dahulu.")
       return
     }
 
-    // push N atlet sekaligus
-    for (let i = 0; i < need; i++) {
+    if (canUsePaidSlots) {
+      for (let i = 0; i < needRoster; i++) {
+        const a = athleteForms[i]
+        if (!a?.name?.trim()) return alert("Nama atlet " + (i + 1) + " wajib diisi.")
+        if (!a?.birthDate) return alert("Tanggal lahir atlet " + (i + 1) + " wajib diisi.")
+
+        addAthlete({
+          sportId: selectedSportId,
+          categoryId: selectedCategoryId,
+          name: a.name.trim(),
+          gender: a.gender,
+          birthDate: a.birthDate,
+          institution: a.institution.trim(),
+          registrationState: {
+            pricingStatus: "INITIAL_PAID",
+            source: "INITIAL_QUOTA",
+            isActive: true,
+          },
+        } as any)
+      }
+
+      resetAthleteForms()
+      return
+    }
+
+    for (let i = 0; i < needRoster; i++) {
       const a = athleteForms[i]
-      if (!a?.name?.trim()) return alert(`Nama atlet ${i + 1} wajib diisi.`)
-      if (!a?.birthDate) return alert(`Tanggal lahir atlet ${i + 1} wajib diisi.`)
+      if (!a?.name?.trim()) return alert("Nama atlet " + (i + 1) + " wajib diisi.")
+      if (!a?.birthDate) return alert("Tanggal lahir atlet " + (i + 1) + " wajib diisi.")
 
       addAthlete({
         sportId: selectedSportId,
@@ -323,10 +379,16 @@ export default function Step3AtletPage() {
         gender: a.gender,
         birthDate: a.birthDate,
         institution: a.institution.trim(),
+        registrationState: {
+          pricingStatus: "TOP_UP_PAID",
+          source: "EXTRA_ACCESS",
+          isActive: true,
+        },
       } as any)
     }
 
     resetAthleteForms()
+    alert("Kuota tambahan berhasil diisi tanpa mengubah kuota lama.")
   }
 
   const handleAddOfficial = () => {
@@ -371,6 +433,17 @@ export default function Step3AtletPage() {
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border bg-gray-50 text-gray-700 border-gray-200">
                 Payment: {state.payment.status}
               </span>
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border bg-blue-50 text-blue-800 border-blue-200">
+                Kuota terbayar: {approvedAthleteQuota}
+              </span>
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border bg-emerald-50 text-emerald-800 border-emerald-200">
+                Atlet aktif: {activeAthleteCount}
+              </span>
+              {pendingTopUpCount > 0 && (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border bg-amber-50 text-amber-800 border-amber-200">
+                  Pending top-up: {pendingTopUpCount}
+                </span>
+              )}
 
               {!paymentApproved && (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border bg-yellow-50 text-yellow-800 border-yellow-200">
@@ -446,6 +519,8 @@ export default function Step3AtletPage() {
               <b>Sisa:</b> {Math.max(0, remainingInSport)}
             </div>
           </div>
+            <div className="mt-1"><b>Sisa slot terbayar:</b> {paidSlotsRemaining}</div>
+            <div className="mt-1"><b>Status akses tambahan:</b> {extraAccess.status}</div>
           {sportQuota <= 0 && (
             <div className="mt-3 text-xs font-bold text-red-700">
               Kuota cabor masih 0. Balik ke Step 1 dan isi jumlah atlet (plannedAthletes/athleteQuota).
@@ -624,6 +699,8 @@ export default function Step3AtletPage() {
             <div className="rounded-xl border bg-gray-50 p-4">
               <div className="text-sm font-extrabold text-gray-900">Validasi Kuota</div>
               <div className="text-sm text-gray-700 mt-2">
+                <div className="mt-1"><b>Sisa slot terbayar:</b> {paidSlotsRemaining}</div>
+                <div className="mt-1"><b>Sisa slot akses tambahan:</b> {extraAccess.status === "OPEN" ? extraSlotsRemaining : 0}</div>
                 <div>
                   <b>Sisa kuota cabor:</b> {Math.max(0, remainingInSport)}
                 </div>
@@ -720,6 +797,15 @@ export default function Step3AtletPage() {
               Tambah Atlet ({Math.max(1, rosterSize || 1)} orang)
             </button>
 
+            <Link
+              href="/dashboard/tambah-peserta"
+              className="px-5 py-2 rounded-xl font-extrabold border bg-white hover:bg-gray-50"
+            >
+              Ajukan Tambah Peserta
+            </Link>
+            {extraAccess.status === "REQUESTED" && <div className="text-sm text-blue-700">Permintaan tambahan dikirim ke admin dan sedang diverifikasi.</div>}
+            {extraAccess.status === "OPEN" && topUp.status !== "APPROVED" && <div className="text-sm text-amber-700">Pengajuan disetujui. Lanjutkan pembayaran tambahan di Step 2.</div>}
+            {topUp.additionalAthletes > 0 && <div className="text-sm text-amber-700">Top-up tambahan: Rp {topUp.additionalFee.toLocaleString("id-ID")}</div>}
             {!paymentApproved && <div className="text-sm text-gray-600">Terkunci sampai pembayaran APPROVED.</div>}
           </div>
         </div>
@@ -749,6 +835,9 @@ export default function Step3AtletPage() {
                 >
                   <div>
                     <div className="font-extrabold text-gray-900">{a.name}</div>
+                    <div className="mt-1 text-xs font-bold text-gray-600">
+                      {(a as any)?.registrationState?.source === "EXTRA_ACCESS" ? "Masuk kuota tambahan" : "Masuk kuota terbayar"}
+                    </div>
                     <div className="text-xs text-gray-600 mt-1">
                       <b>Kategori:</b> {categoryLabel(a.sportId, a.categoryId)}
                     </div>

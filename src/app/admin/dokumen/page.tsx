@@ -37,7 +37,7 @@ function docLabel(key: DocKey) {
   }
 }
 
-function badge(status: DocumentStatus) {
+function badge(status: DocumentStatus, note?: string) {
   const base = "inline-flex items-center px-2 py-1 rounded-full text-xs font-extrabold border"
   if (status === "EMPTY") return <span className={`${base} bg-gray-50 border-gray-200 text-gray-600`}>EMPTY</span>
   if (status === "UPLOADED") return <span className={`${base} bg-yellow-50 border-yellow-200 text-yellow-800`}>UPLOADED</span>
@@ -270,7 +270,7 @@ export default function AdminDokumenPage() {
     setPreview({ open: false, loading: false, error: null, title: "", fileName: "", url: "", mime: "" })
   }
 
-  const updateDoc = async (docKey: DocKey, status: ReviewStatus) => {
+  const updateDoc = async (docKey: DocKey, status: ReviewStatus, note?: string) => {
     if (!registration || !selectedAthleteId) return
 
     const reg = registration
@@ -283,13 +283,15 @@ export default function AdminDokumenPage() {
       return
     }
 
+    const storedNote = note?.trim() ? note.trim() : undefined
+
     const updatedDocs = reg.documents.map((d) => {
       if (d.athleteId !== selectedAthleteId) return d
       return {
         ...d,
         [docKey]: {
           ...d[docKey],
-          status,
+          status, note: storedNote,
         },
       }
     })
@@ -305,7 +307,7 @@ export default function AdminDokumenPage() {
         userId: targetUserId,
         athleteId: selectedAthleteId,
         docKey,
-        status,
+        status, note: storedNote,
       })
       setRegistration(updated)
     } catch {
@@ -372,6 +374,7 @@ export default function AdminDokumenPage() {
             <option value="BELUM_SUBMIT">Kontingen Belum Submit Dokumen</option>
           </select>
         </div>
+        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600">Fokus cepat: Sudah Submit = sudah ada file diupload. Belum Submit = semua dokumen masih kosong. Belum Approve = masih ada dokumen uploaded atau rejected.</div>
         {filteredKontingen.length === 0 ? (
           <div className="text-sm text-gray-500">Tidak ada kontingen yang cocok dengan filter.</div>
         ) : (
@@ -385,7 +388,7 @@ export default function AdminDokumenPage() {
               const summary = summarizeKontingenDocs(reg!, scopedAthletes)
               return (
                 <option key={u.id} value={u.id}>
-                  {u.institutionName} - {u.email} ({summary.approvedDocs}/{summary.totalDocs} approved, {summary.submittedDocs}/{summary.totalDocs} submit)
+                  {u.institutionName} - {u.email} (submit {summary.submittedDocs}/{summary.totalDocs} | belum approve {summary.totalDocs - summary.approvedDocs})
                 </option>
               )
             })}
@@ -406,18 +409,23 @@ export default function AdminDokumenPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
           <div className="bg-white border rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between"><div className="text-lg font-extrabold text-gray-900">Data Atlet</div><select value={docFilter} onChange={(e) => setDocFilter(e.target.value as DocFilter)} className="w-full border rounded-xl px-3 py-2 text-sm md:w-[240px]"><option value="ALL">Semua Dokumen</option><option value="ACC">Sudah ACC</option><option value="BELUM_ACC">Belum ACC</option></select></div>
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between"><div><div className="text-lg font-extrabold text-gray-900">Data Atlet</div><div className="text-xs text-gray-500">Dropdown atlet menampilkan jumlah dokumen submit dan yang belum approve.</div></div><select value={docFilter} onChange={(e) => setDocFilter(e.target.value as DocFilter)} className="w-full border rounded-xl px-3 py-2 text-sm md:w-[240px]"><option value="ALL">Semua Dokumen</option><option value="ACC">Sudah ACC</option><option value="BELUM_ACC">Belum ACC</option></select></div>
 
             <select
               value={selectedAthleteId}
               onChange={(e) => setSelectedAthleteId(e.target.value)}
               className="w-full border rounded-xl px-3 py-2"
             >
-              {filteredVisibleAthletes.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
+              {filteredVisibleAthletes.map((a) => {
+                const athleteDoc = registration?.documents.find((d) => d.athleteId === a.id)
+                const submittedCount = DOC_KEYS.reduce((acc, key) => acc + ((athleteDoc?.[key]?.status ?? "EMPTY") !== "EMPTY" ? 1 : 0), 0)
+                const approvedCount = DOC_KEYS.reduce((acc, key) => acc + ((athleteDoc?.[key]?.status ?? "EMPTY") === "APPROVED" ? 1 : 0), 0)
+                return (
+                  <option key={a.id} value={a.id}>
+                    {a.name} | submit {submittedCount}/{DOC_KEYS.length} | belum approve {DOC_KEYS.length - approvedCount}
+                  </option>
+                )
+              })}
             </select>
 
             {!selectedAthlete ? (
@@ -470,7 +478,7 @@ export default function AdminDokumenPage() {
                         <div>
                           <div className="font-extrabold text-gray-900">{docLabel(docKey)}</div>
                           <div className="mt-2 flex items-center gap-2">
-                            {badge(d.status)}
+                            {badge(d.status, d.note)}
                             <span className="text-xs text-gray-500">{d.fileName ?? "-"}</span>
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
@@ -478,7 +486,7 @@ export default function AdminDokumenPage() {
                           </div>
                         </div>
 
-                        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 md:w-[430px]">
+                        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:w-[430px]">
                           <button
                             type="button"
                             onClick={() => openPreview(docKey)}
@@ -499,6 +507,7 @@ export default function AdminDokumenPage() {
                           >
                             Approve
                           </button>
+                          <button type="button" onClick={() => { const note = window.prompt("Catatan revisi wajib diisi:", d.note?.startsWith("REVISI:") ? d.note.replace("REVISI:", "").trim() : ""); if (!note || !note.trim()) return; updateDoc(docKey, "REJECTED", `REVISI: ${note.trim()}`) }} className="w-full px-3 py-2 rounded-xl font-extrabold bg-amber-500 text-white hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed" disabled={!hasFile}>Revisi</button>
                           <button
                             type="button"
                             onClick={() => updateDoc(docKey, "REJECTED")}

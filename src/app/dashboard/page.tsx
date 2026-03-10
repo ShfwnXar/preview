@@ -1,12 +1,25 @@
-﻿"use client"
+"use client"
 
 import Link from "next/link"
 import { useAuth } from "@/context/AuthContext"
+
+function canOpenExtraRequest(userId?: string) {
+  if (!userId || typeof window === "undefined") return false
+  try {
+    const raw = localStorage.getItem(`mg26_registration_${userId}`)
+    if (!raw) return false
+    const registration = JSON.parse(raw) as { payment?: { status?: string } }
+    return registration.payment?.status === "APPROVED"
+  } catch {
+    return false
+  }
+}
 
 export default function DashboardHomePage() {
   const { user } = useAuth()
 
   if (!user) return null
+  const canRequestExtra = canOpenExtraRequest(user.id)
 
   const registrationSummary = {
     statusLabel: "Belum Memulai Pendaftaran",
@@ -57,6 +70,16 @@ export default function DashboardHomePage() {
             >
               Mulai Pendaftaran
             </Link>
+
+
+            {canRequestExtra ? (
+              <Link
+                href="/dashboard/tambah-peserta"
+                className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 font-semibold text-amber-800 hover:bg-amber-100"
+              >
+                Tambah Peserta
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>
@@ -110,6 +133,7 @@ export default function DashboardHomePage() {
             Lihat Status
           </Link>
         </div>
+
       </div>
     </div>
   )

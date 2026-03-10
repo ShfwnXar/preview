@@ -12,6 +12,7 @@ export type DocFile = {
   fileName?: string
   mimeType?: string
   uploadedAt?: string
+  note?: string
 }
 
 export type AthleteDocuments = {
@@ -62,9 +63,9 @@ export type PaymentInfo = {
   proofFileName?: string
   proofMimeType?: string
   uploadedAt?: string
+  note?: string
   totalFee: number
   approvedTotalFee?: number
-  note?: string
 }
 
 export type RegistrationState = {

@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useAuth } from "@/context/AuthContext"
 import Link from "next/link"
@@ -43,7 +43,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     ...(canSeeDownloads ? [{ href: "/admin/downloads", label: "Panel Download" }] : []),
     ...(!isAdminCabor ? [{ href: "/admin/export", label: "Download Data" }] : []),
     ...(!isAdminCabor ? [{ href: "/admin/reset-token", label: "Reset Token" }] : []),
-    ...(isSuperAdmin ? [{ href: "/admin/kelola-admin", label: "Kelola Admin" }] : []),
+    ...(isSuperAdmin ? [{ href: "/admin/kelola-admin", label: "Kelola Akun" }] : []),
+    ...(isSuperAdmin ? [{ href: "/admin/pengaturan-pendaftaran", label: "Buka/Tutup Pendaftaran" }] : []),
   ]
 
   const currentLabel = menu.find((m) => pathname === m.href || pathname.startsWith(m.href + "/"))?.label ?? "Admin"

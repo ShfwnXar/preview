@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import Link from "next/link"
 import { useAuth } from "@/context/AuthContext"
@@ -55,6 +55,7 @@ export default function AdminHomePage() {
         <div className="mt-4 flex flex-col gap-3 md:flex-row">
           <Link href="/admin/pembayaran" className="rounded-lg bg-green-600 px-4 py-2 text-center font-semibold text-white hover:bg-green-700">Validasi Pembayaran</Link>
           <Link href="/admin/dokumen" className="rounded-lg border border-emerald-200 px-4 py-2 text-center font-semibold text-gray-700 hover:bg-emerald-50">Validasi Dokumen</Link>
+          {user.role === "SUPER_ADMIN" && <Link href="/admin/pengaturan-pendaftaran" className="rounded-lg border border-emerald-200 px-4 py-2 text-center font-semibold text-gray-700 hover:bg-emerald-50">Buka/Tutup Pendaftaran</Link>}
         </div>
       </div>
 

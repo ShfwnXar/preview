@@ -1,4 +1,4 @@
-import type { Role, InstitutionType, User } from "@/context/AuthContext"
+﻿import type { Role, InstitutionType, User } from "@/context/AuthContext"
 import type { RegistrationState, PaymentStatus, DocumentStatus } from "@/context/RegistrationContext"
 
 /** ===== Auth DTO ===== */
@@ -42,4 +42,5 @@ export type AdminUpdateDocRequest = {
   athleteId: string
   docKey: string
   status: Exclude<DocumentStatus, "EMPTY">
+  note?: string
 }
