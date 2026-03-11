@@ -334,9 +334,9 @@ export default function AdminDokumenPage() {
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
           <div>
 
-            <h1 className="text-2xl font-extrabold text-gray-900">Validasi Dokumen Atlet</h1>
+            <h1 className="text-2xl font-extrabold text-gray-900">Validasi Dokumen Peserta</h1>
             <p className="text-gray-600 mt-2">
-              Menu Validasi Dokumen Peserta lomba
+              Pantau progres upload, approval, dan revisi dokumen peserta dengan lebih cepat dari satu tampilan admin.
             </p>
             {adminUser?.role === "ADMIN_CABOR" && (
               <div className="mt-2 text-xs text-gray-500">Mode Admin Cabor: hanya atlet sesuai cabor yang ditugaskan.</div>
