@@ -15,6 +15,22 @@ import { Textarea } from "@/components/ui/Textarea"
 
 type HybridRegistrationState = DraftRegistrationState & Partial<Registration>
 type RequestDraft = Record<string, string>
+const SPORT_VOLI_ID = "voli_indoor"
+const VOLI_ROSTER_PER_TEAM = 12
+
+function getRequestUnitLabel(sportId: string) {
+  return sportId === SPORT_VOLI_ID ? "Jumlah tim tambahan" : "Jumlah peserta tambahan"
+}
+
+function toRequestedSlots(sportId: string, rawValue: string) {
+  const baseValue = Math.max(0, Number(rawValue ?? 0))
+  return sportId === SPORT_VOLI_ID ? baseValue * VOLI_ROSTER_PER_TEAM : baseValue
+}
+
+function fromRequestedSlots(sportId: string, requestedSlots: number) {
+  const total = Math.max(0, Number(requestedSlots ?? 0))
+  return sportId === SPORT_VOLI_ID ? String(total / VOLI_ROSTER_PER_TEAM) : String(total)
+}
 
 function normalizeRequestItems(state: HybridRegistrationState): ExtraAthleteAccessItem[] {
   const existing = Array.isArray(state.extraAthleteAccess?.requestItems) ? state.extraAthleteAccess.requestItems : []
@@ -36,9 +52,18 @@ function normalizeRequestItems(state: HybridRegistrationState): ExtraAthleteAcce
 
 function buildDraftMap(items: ExtraAthleteAccessItem[]) {
   return items.reduce<RequestDraft>((acc, item) => {
-    acc[item.sportId] = String(Math.max(0, Number(item.requestedSlots ?? 0)))
+    acc[item.sportId] = fromRequestedSlots(item.sportId, Number(item.requestedSlots ?? 0))
     return acc
   }, {})
+}
+
+function formatCompactBreakdown(item: ExtraAthleteAccessItem, type: "requested" | "approved") {
+  const slots = type === "requested" ? Number(item.requestedSlots ?? 0) : Number(item.approvedSlots ?? 0)
+  if (item.sportId === SPORT_VOLI_ID) {
+    return item.sportName + ": " + (slots / VOLI_ROSTER_PER_TEAM) + " tim"
+  }
+
+  return item.sportName + ": " + slots + " peserta"
 }
 
 function statusTone(status: string): "success" | "warning" | "danger" | "neutral" | "info" | "brand" {
@@ -128,12 +153,14 @@ export default function TambahPesertaPage() {
       .map((sport) => ({
         sportId: sport.id,
         sportName: sport.name,
-        requestedSlots: Math.max(0, Number(requestedBySport[sport.id] ?? 0)),
+        requestedSlots: toRequestedSlots(sport.id, requestedBySport[sport.id] ?? "0"),
       }))
       .filter((item) => item.requestedSlots > 0)
   }, [requestedBySport, sportOptions])
 
   const requestedSlots = requestItems.reduce((total, item) => total + item.requestedSlots, 0)
+  const requestedBreakdown = existingItems.map((item) => formatCompactBreakdown(item, "requested")).join(" | ")
+  const approvedBreakdown = existingItems.map((item) => formatCompactBreakdown(item, "approved")).join(" | ")
 
   const handleSubmitRequest = () => {
     if (!basePaymentApproved) {
@@ -230,10 +257,12 @@ export default function TambahPesertaPage() {
               <div className="rounded-2xl border bg-white p-4">
                 <div className="text-xs text-gray-500">Slot diajukan</div>
                 <div className="mt-1 text-lg font-extrabold text-gray-900">{extraAccess.requestedSlots}</div>
+                {requestedBreakdown ? <div className="mt-2 text-xs text-gray-500">{requestedBreakdown}</div> : null}
               </div>
               <div className="rounded-2xl border bg-white p-4">
                 <div className="text-xs text-gray-500">Slot disetujui</div>
                 <div className="mt-1 text-lg font-extrabold text-gray-900">{extraAccess.approvedSlots}</div>
+                {approvedBreakdown ? <div className="mt-2 text-xs text-gray-500">{approvedBreakdown}</div> : null}
               </div>
             </div>
 
@@ -250,7 +279,8 @@ export default function TambahPesertaPage() {
                     <div key={sport.id} className="grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-[1.2fr_0.8fr] md:items-center">
                       <div>
                         <div className="font-extrabold text-gray-900">{sport.name}</div>
-                        <div className="text-xs text-gray-500">Tambahkan jumlah peserta baru khusus untuk cabor ini.</div>
+                        <div className="text-xs font-semibold text-gray-700">{getRequestUnitLabel(sport.id)}</div>
+                        <div className="text-xs text-gray-500">{sport.id === SPORT_VOLI_ID ? "Masukkan jumlah tim. Sistem akan menghitung 12 atlet per tim." : "Tambahkan jumlah peserta baru khusus untuk cabor ini."}</div>
                       </div>
                       <input
                         type="number"
@@ -272,7 +302,7 @@ export default function TambahPesertaPage() {
                     {existingItems.map((item) => (
                       <div key={item.sportId} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2">
                         <span>{item.sportName}</span>
-                        <span className="font-bold">Diminta {item.requestedSlots} • Disetujui {item.approvedSlots ?? 0}</span>
+                        <span className="font-bold">{item.sportId === SPORT_VOLI_ID ? "Diminta " + (item.requestedSlots / VOLI_ROSTER_PER_TEAM) + " tim / " + item.requestedSlots + " atlet | Disetujui " + ((item.approvedSlots ?? 0) / VOLI_ROSTER_PER_TEAM) + " tim / " + (item.approvedSlots ?? 0) + " atlet" : "Diminta " + item.requestedSlots + " peserta | Disetujui " + (item.approvedSlots ?? 0) + " peserta"}</span>
                       </div>
                     ))}
                   </div>
