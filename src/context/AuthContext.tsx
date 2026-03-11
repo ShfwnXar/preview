@@ -1,6 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react"
+import { DEFAULT_ADMIN_CABOR_ACCOUNTS } from "@/data/defaultAdminCabor"
 
 export type Role = "PESERTA" | "ADMIN" | "ADMIN_CABOR" | "SUPER_ADMIN"
 
@@ -142,7 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const seedDefaultAdminsIfEmpty = () => {
     const users = getAllUsers()
-    if (users.length > 0) return
+
 
     const now = new Date().toISOString()
 
@@ -172,23 +173,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       createdAt: now,
     }
 
-    const adminCaborVoli: StoredUser = {
-      id: uid(),
-      role: "ADMIN_CABOR",
-      institutionName: "Panitia Muhammadiyah Games",
-      institutionType: "PIMPINAN_CABANG",
-      address: "-",
-      picName: "Admin Cabor Voli",
-      email: normalizeEmail("adminvoli@mg.local"),
-      phone: "0000000000",
-      password: "adminvoli123",
-      assignedSportIds: ["voli_indoor"],
-      createdAt: now,
-    }
+    const adminCaborAccounts: StoredUser[] = DEFAULT_ADMIN_CABOR_ACCOUNTS.map((admin) => ({ id: uid(), role: "ADMIN_CABOR", institutionName: "Panitia Muhammadiyah Games", institutionType: "PIMPINAN_CABANG", address: "-", picName: admin.picName, email: normalizeEmail(admin.email), phone: "0000000000", password: admin.password, assignedSportIds: [admin.sportId], createdAt: now }))
 
-    setAllUsers([superAdmin, adminUmum, adminCaborVoli])
+
+
+
+
+
+
+
+
+
+
+
+
+    const existingEmails = new Set(users.map((item) => normalizeEmail(item.email)))
+    const missingDefaults = [superAdmin, adminUmum, ...adminCaborAccounts].filter((item) => !existingEmails.has(item.email))
+    if (missingDefaults.length === 0) return
+    setAllUsers([...missingDefaults, ...users])
+
   }
-
   const register = (input: RegisterInput) => {
     if (!input.institutionName.trim()) return { ok: false, message: "Nama instansi wajib diisi." }
     if (!input.picName.trim()) return { ok: false, message: "Nama PIC wajib diisi." }
