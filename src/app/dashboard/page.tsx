@@ -111,7 +111,7 @@ export default function DashboardHomePage() {
             Rp {registrationSummary.totalFee.toLocaleString()}
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            100k/atlet, official gratis, voli 1.2jt/tim.
+            150rb/atlet, official gratis, voli 1,5jt/tim.
           </p>
         </div>
       </div>
@@ -138,4 +138,5 @@ export default function DashboardHomePage() {
     </div>
   )
 }
+
 

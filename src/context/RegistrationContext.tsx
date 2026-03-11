@@ -79,9 +79,9 @@ export type RegistrationState = {
 
 const LS_KEY_PREFIX = "mg26_registration_"
 
-const FEE_ATHLETE = 100_000
+const FEE_ATHLETE = 150_000
 const FEE_OFFICIAL = 0
-const FEE_VOLI_TEAM = 1_200_000
+const FEE_VOLI_TEAM = 1_500_000
 const SPORT_VOLI_ID = "voli_indoor"
 
 function safeParse<T>(value: string | null, fallback: T): T {
@@ -534,4 +534,5 @@ export function useRegistration() {
   if (!ctx) throw new Error("useRegistration must be used within RegistrationProvider")
   return ctx
 }
+
 

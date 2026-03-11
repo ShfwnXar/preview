@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRegistration } from "@/context/RegistrationContext"
 import type { RegistrationState as DraftRegistrationState } from "@/context/RegistrationContext"
 import { useAuth } from "@/context/AuthContext"
+import { getRegistrationStepSetting, getRegistrationStepStatus, readRegistrationSettings } from "@/lib/registrationSettings"
 import { putFileBlob } from "@/lib/fileStore" 
 import { getTopUp, withExtraFlow } from "@/lib/extraAthleteFlow"
 import type { Registration } from "@/types/registration"
@@ -46,6 +47,7 @@ export default function Step2PembayaranPage() {
   const [isSubmittingTopUp, setIsSubmittingTopUp] = useState(false)
   const [isSubmittingProof, setIsSubmittingProof] = useState(false)
   const hybridState = state as HybridRegistrationState
+  const step2Status = getRegistrationStepStatus(getRegistrationStepSetting("step2", readRegistrationSettings()))
 
   useEffect(() => {
     setNote(state.payment.note ?? "")
@@ -55,6 +57,7 @@ export default function Step2PembayaranPage() {
 
 
   const canUpload = useMemo(() => {
+    if (!step2Status.isOpen) return false
     // harus pilih minimal 1 cabor dulu
     if (selectedSportsCount === 0) return false
     // jika sudah APPROVED, peserta tidak perlu upload ulang
@@ -63,7 +66,7 @@ export default function Step2PembayaranPage() {
     return true
   }, [selectedSportsCount, state.payment.status])
 
-  const canUploadTopUp = topUp.additionalAthletes > 0 && (topUp.status === "REQUIRED" || topUp.status === "REJECTED")
+  const canUploadTopUp = step2Status.isOpen && topUp.additionalAthletes > 0 && (topUp.status === "REQUIRED" || topUp.status === "REJECTED")
 
   const onPickProof = (file: File | null) => {
     if (!file) {
@@ -196,6 +199,7 @@ export default function Step2PembayaranPage() {
                 </Badge>
                 <Badge tone="info">Total: Rp {state.payment.totalFee.toLocaleString("id-ID")}</Badge>
                 <Badge tone="neutral">Cabor dipilih: {selectedSportsCount}</Badge>
+                <Badge tone={step2Status.isOpen ? "success" : "danger"}>Jadwal Step 2: {step2Status.startDate} - {step2Status.endDate}</Badge>
               </div>
 
               {state.payment.status === "REJECTED" && state.payment.note && (
@@ -264,7 +268,7 @@ export default function Step2PembayaranPage() {
                 <div className="rounded-2xl border bg-gradient-to-br from-white to-emerald-50/60 p-4">
                   <div className="text-xs text-gray-500">Total yang harus ditransfer</div>
                   <div className="mt-1 text-xl font-extrabold">Rp {state.payment.totalFee.toLocaleString("id-ID")}</div>
-                  <div className="mt-1 text-xs text-gray-500">Atlet 100k/orang, Official gratis, Voli 1.2jt/tim.</div>
+                  <div className="mt-1 text-xs text-gray-500">Atlet 150rb/orang, Official gratis, Voli 1,5jt/tim.</div>
                 </div>
 
                 <div className="rounded-2xl border bg-gradient-to-br from-white to-sky-50/60 p-4">
@@ -359,5 +363,11 @@ export default function Step2PembayaranPage() {
     </div>
   )
 }
+
+
+
+
+
+
 
 

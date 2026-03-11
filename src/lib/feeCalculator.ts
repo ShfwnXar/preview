@@ -1,9 +1,9 @@
-﻿import { Sport } from "@/types/registration"
+import { Sport } from "@/types/registration"
 
 export const FEES = {
-  ATHLETE_PER_PERSON: 100_000,
+  ATHLETE_PER_PERSON: 150_000,
   OFFICIAL_PER_PERSON: 0,
-  VOLI_PER_TEAM: 1_200_000,
+  VOLI_PER_TEAM: 1_500_000,
 } as const
 
 export function countIndividuAthletes(sports: Sport[]) {
@@ -54,4 +54,5 @@ export function calculateFeeBreakdown(sports: Sport[], officials: number) {
     total,
   }
 }
+
 

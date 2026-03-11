@@ -312,7 +312,7 @@ export default function TambahPesertaPage() {
               <div className="rounded-2xl border bg-white p-4 text-sm text-gray-700">
                 <div className="text-xs text-gray-500">Estimasi biaya tambahan</div>
                 <div className="mt-1 text-lg font-extrabold text-gray-900">
-                  Rp {(requestedSlots * 100000).toLocaleString("id-ID")}
+                  Rp {(requestedSlots * 150000).toLocaleString("id-ID")}
                 </div>
               </div>
             </div>
@@ -365,3 +365,4 @@ export default function TambahPesertaPage() {
     </div>
   )
 }
+

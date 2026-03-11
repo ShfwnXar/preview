@@ -3,7 +3,7 @@ import type { RegistrationState } from "@/context/RegistrationContext"
 export type ExtraAccessStatus = "NONE" | "REQUESTED" | "OPEN" | "CLOSED"
 export type TopUpStatus = "NONE" | "REQUIRED" | "PENDING" | "APPROVED" | "REJECTED"
 
-const FEE_ATHLETE = 100_000
+const FEE_ATHLETE = 150_000
 
 export function getApprovedAthleteQuota(state: RegistrationState & Record<string, any>) {
   const explicitQuota = Number(state.approvedAthleteQuota ?? 0)
@@ -133,3 +133,4 @@ export function withExtraFlow(state: RegistrationState & Record<string, any>) {
     updatedAt: new Date().toISOString(),
   }
 }
+

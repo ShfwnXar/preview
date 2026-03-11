@@ -44,7 +44,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     ...(!isAdminCabor ? [{ href: "/admin/export", label: "Download Data" }] : []),
     ...(!isAdminCabor ? [{ href: "/admin/reset-token", label: "Reset Token" }] : []),
     ...(isSuperAdmin ? [{ href: "/admin/kelola-admin", label: "Kelola Akun" }] : []),
-    ...(isSuperAdmin ? [{ href: "/admin/pengaturan-pendaftaran", label: "Buka/Tutup Pendaftaran" }] : []),
+    ...(isSuperAdmin ? [{ href: "/admin/pengaturan-pendaftaran", label: "Jadwal Step Pendaftaran" }] : []),
   ]
 
   const currentLabel = menu.find((m) => pathname === m.href || pathname.startsWith(m.href + "/"))?.label ?? "Admin"
@@ -110,4 +110,5 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </div>
   )
 }
+
 

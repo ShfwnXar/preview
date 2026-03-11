@@ -259,10 +259,10 @@ export default function Step1PilihCaborDanJumlahPage() {
                           <div className="rounded-xl border bg-gray-50 p-3">
                             <div className="text-xs text-gray-500">Estimasi Biaya Cabor</div>
                             <div className="mt-1 font-extrabold">
-                              Rp {(s.plannedAthletes * 100_000).toLocaleString("id-ID")}
+                              Rp {(s.plannedAthletes * 150_000).toLocaleString("id-ID")}
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
-                              Atlet 100k/orang - Official gratis
+                              Atlet 150rb/orang - Official gratis
                             </div>
                           </div>
                         </>
@@ -299,10 +299,10 @@ export default function Step1PilihCaborDanJumlahPage() {
                           <div className="rounded-xl border bg-gray-50 p-3">
                             <div className="text-xs text-gray-500">Estimasi Biaya Voli</div>
                             <div className="mt-1 font-extrabold">
-                              Rp {(((s.voliMenTeams ?? 0) + (s.voliWomenTeams ?? 0)) * 1_200_000).toLocaleString("id-ID")}
+                              Rp {(((s.voliMenTeams ?? 0) + (s.voliWomenTeams ?? 0)) * 1_500_000).toLocaleString("id-ID")}
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
-                              1.200.000 / tim
+                              1.500.000 / tim
                             </div>
                           </div>
 
@@ -354,3 +354,4 @@ export default function Step1PilihCaborDanJumlahPage() {
     </div>
   )
 }
+

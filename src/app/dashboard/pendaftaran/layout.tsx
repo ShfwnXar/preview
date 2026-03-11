@@ -2,12 +2,18 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useAuth } from "@/context/AuthContext"
 import { useRegistration } from "@/context/RegistrationContext"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Badge } from "@/components/ui/Badge"
 import { Button } from "@/components/ui/Button"
+import {
+  getRegistrationStepSetting,
+  getRegistrationStepStatus,
+  readRegistrationSettings,
+  type RegistrationStepKey,
+} from "@/lib/registrationSettings"
 
 function isActive(pathname: string, href: string) {
   if (pathname === href) return true
@@ -21,11 +27,23 @@ function paymentTone(status: string): "success" | "warning" | "danger" | "neutra
   return "neutral"
 }
 
+function getCurrentStepKey(pathname: string): RegistrationStepKey | null {
+  if (pathname === "/dashboard/pendaftaran") return "step1"
+  if (pathname.startsWith("/dashboard/pendaftaran/atlet")) return "step3"
+  if (pathname.startsWith("/dashboard/pendaftaran/dokumen")) return "step4"
+  return null
+}
+
+function formatWindow(startDate: string, endDate: string) {
+  return `${startDate} s.d. ${endDate}`
+}
+
 function Stepper() {
   const pathname = usePathname()
   const { user } = useAuth()
   const { state, hydrateReady } = useRegistration()
   const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const settings = readRegistrationSettings()
 
   if (!hydrateReady) {
     return (
@@ -41,9 +59,11 @@ function Stepper() {
     )
   }
 
-  const isLocked =
-    state.payment.status === "PENDING" ||
-    state.payment.status === "APPROVED"
+  const isLocked = state.payment.status === "PENDING" || state.payment.status === "APPROVED"
+  const step1Status = getRegistrationStepStatus(getRegistrationStepSetting("step1", settings))
+  const step2Status = getRegistrationStepStatus(getRegistrationStepSetting("step2", settings))
+  const step3Status = getRegistrationStepStatus(getRegistrationStepSetting("step3", settings))
+  const step4Status = getRegistrationStepStatus(getRegistrationStepSetting("step4", settings))
 
   const handleSave = () => {
     setSaveMessage(null)
@@ -62,30 +82,34 @@ function Stepper() {
 
   const steps = [
     {
+      key: "step1" as const,
       label: "Step 1 - Pilih Cabor",
       href: "/dashboard/pendaftaran",
-      note: isLocked ? "Terkunci (pembayaran PENDING/APPROVED)" : "Buka",
-      disabled: false,
+      note: step1Status.isOpen ? (isLocked ? "Terkunci karena pembayaran sudah diajukan/diverifikasi" : "Buka sesuai jadwal") : "Ditutup (" + formatWindow(step1Status.startDate, step1Status.endDate) + ")",
+      disabled: !step1Status.isOpen,
     },
     {
+      key: "step2" as const,
       label: "Step 2 - Pembayaran",
       href: "/dashboard/pembayaran",
-      note: "Upload bukti pembayaran",
-      disabled: false,
+      note: step2Status.isOpen ? "Upload bukti pembayaran" : "Ditutup (" + formatWindow(step2Status.startDate, step2Status.endDate) + ")",
+      disabled: !step2Status.isOpen,
     },
     {
+      key: "step3" as const,
       label: "Step 3 - Input Atlet + Kategori",
       href: "/dashboard/pendaftaran/atlet",
-      note: "Pilih kategori per atlet sesuai kuota",
-      disabled: state.payment.status !== "APPROVED",
+      note: step3Status.isOpen ? "Pilih kategori per atlet sesuai kuota" : "Ditutup (" + formatWindow(step3Status.startDate, step3Status.endDate) + ")",
+      disabled: !step3Status.isOpen || state.payment.status !== "APPROVED",
     },
     {
+      key: "step4" as const,
       label: "Step 4 - Upload Dokumen Atlet",
       href: "/dashboard/pendaftaran/dokumen",
-      note: "Upload 5 dokumen per atlet",
-      disabled: state.payment.status !== "APPROVED",
+      note: step4Status.isOpen ? "Upload 5 dokumen per atlet" : "Ditutup (" + formatWindow(step4Status.startDate, step4Status.endDate) + ")",
+      disabled: !step4Status.isOpen || state.payment.status !== "APPROVED",
     },
-  ] as const
+  ]
 
   return (
     <Card variant="soft">
@@ -97,14 +121,14 @@ function Stepper() {
             </div>
             <CardTitle className="mt-1">Alur Pendaftaran (Step 1-4)</CardTitle>
             <CardDescription className="mt-2">
-              Step 3 & 4 terbuka setelah pembayaran <b>APPROVED</b>.
+              Step 3 & 4 terbuka jika pembayaran <b>APPROVED</b> dan jadwal step dari admin sedang aktif.
             </CardDescription>
 
             <div className="mt-3 flex flex-wrap gap-2 items-center">
               <Badge tone={paymentTone(state.payment.status)}>
                 Payment: {state.payment.status}
               </Badge>
-              {isLocked && <Badge tone="warning">Step 1 terkunci (edit disabled)</Badge>}
+              {isLocked && <Badge tone="warning">Step 1 terkunci untuk edit</Badge>}
               <Badge tone="info">
                 Total: Rp {state.payment.totalFee.toLocaleString("id-ID")}
               </Badge>
@@ -139,6 +163,7 @@ function Stepper() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {steps.map((s) => {
             const active = isActive(pathname, s.href)
+            const scheduleClosed = (s.key === "step1" && !step1Status.isOpen) || (s.key === "step2" && !step2Status.isOpen) || (s.key === "step3" && !step3Status.isOpen) || (s.key === "step4" && !step4Status.isOpen)
 
             return (
               <Link
@@ -147,6 +172,10 @@ function Stepper() {
                 onClick={(e) => {
                   if (s.disabled) {
                     e.preventDefault()
+                    if (scheduleClosed) {
+                      alert("Step ini sedang ditutup admin karena berada di luar rentang tanggal aktif.")
+                      return
+                    }
                     alert("Step ini hanya bisa dibuka setelah pembayaran APPROVED.")
                   }
                 }}
@@ -170,7 +199,7 @@ function Stepper() {
 
                 {s.disabled && (
                   <div className="mt-2 text-xs text-amber-700 font-semibold">
-                    Terkunci sampai pembayaran APPROVED
+                    {scheduleClosed ? "Terkunci oleh jadwal admin" : "Terkunci sampai pembayaran APPROVED"}
                   </div>
                 )}
               </Link>
@@ -179,22 +208,28 @@ function Stepper() {
         </div>
 
         <div className="mt-4 text-xs text-gray-500">
-          Catatan: Setelah upload bukti bayar, status akan <b>PENDING</b> sampai admin memverifikasi.
+          Catatan: Setelah upload bukti bayar, status akan <b>PENDING</b> sampai admin memverifikasi. Jadwal aktif tiap step mengikuti pengaturan admin.
         </div>
       </CardContent>
     </Card>
   )
 }
 
-export default function PendaftaranLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function PendaftaranLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const currentStepKey = useMemo(() => getCurrentStepKey(pathname), [pathname])
+  const settings = readRegistrationSettings()
+  const currentStepStatus = currentStepKey ? getRegistrationStepStatus(getRegistrationStepSetting(currentStepKey, settings)) : null
+
   return (
     <div className="space-y-6">
       <Stepper />
-      {children}
+      {currentStepStatus && !currentStepStatus.isOpen ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+          <div className="font-extrabold text-amber-950">{currentStepStatus.label} sedang ditutup</div>
+          <div className="mt-1">Step ini hanya aktif pada rentang tanggal {formatWindow(currentStepStatus.startDate, currentStepStatus.endDate)}.</div>
+        </div>
+      ) : children}
     </div>
   )
 }
