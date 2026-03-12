@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { useAuth } from "@/context/AuthContext"
+import { useRegistrationSettings } from "@/hooks/useRegistrationSettings"
 import {
   getRegistrationStepStatus,
   readRegistrationSettings,
@@ -17,6 +18,7 @@ function formatDateRange(startDate: string, endDate: string) {
 
 export default function PengaturanPendaftaranPage() {
   const { user } = useAuth()
+  const { saveSettings } = useRegistrationSettings()
   const [settings, setSettings] = useState<RegistrationSettings>(() => readRegistrationSettings())
   const [messageByStep, setMessageByStep] = useState<Partial<Record<RegistrationStepKey, string>>>({})
 
@@ -62,9 +64,14 @@ export default function PengaturanPendaftaranPage() {
       },
     }
 
-    writeRegistrationSettings(nextSettings)
-    setSettings(nextSettings)
-    setMessageByStep((prev) => ({ ...prev, [stepKey]: "Konfigurasi step berhasil disimpan." }))
+    try {
+      const saved = await saveSettings(nextSettings)
+      writeRegistrationSettings(saved)
+      setSettings(saved)
+      setMessageByStep((prev) => ({ ...prev, [stepKey]: "Konfigurasi step berhasil disimpan." }))
+    } catch {
+      setMessageByStep((prev) => ({ ...prev, [stepKey]: "Gagal menyimpan konfigurasi step." }))
+    }
   }
 
   return (
