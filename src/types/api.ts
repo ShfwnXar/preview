@@ -1,5 +1,6 @@
-﻿import type { Role, InstitutionType, User } from "@/context/AuthContext"
+import type { Role, InstitutionType, User } from "@/context/AuthContext"
 import type { RegistrationState, PaymentStatus, DocumentStatus } from "@/context/RegistrationContext"
+import type { RegistrationSettings } from "@/lib/registrationSettings"
 
 /** ===== Auth DTO ===== */
 export type LoginRequest = { email: string; password: string }
@@ -44,3 +45,6 @@ export type AdminUpdateDocRequest = {
   status: Exclude<DocumentStatus, "EMPTY">
   note?: string
 }
+
+export type GetRegistrationSettingsResponse = RegistrationSettings
+export type SaveRegistrationSettingsRequest = RegistrationSettings

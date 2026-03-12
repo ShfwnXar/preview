@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from "react"
 import { useRegistration } from "@/context/RegistrationContext"
 import type { RegistrationState as DraftRegistrationState } from "@/context/RegistrationContext"
 import { useAuth } from "@/context/AuthContext"
-import { getRegistrationStepSetting, getRegistrationStepStatus, readRegistrationSettings } from "@/lib/registrationSettings"
+import { useRegistrationSettings } from "@/hooks/useRegistrationSettings"
+import { getRegistrationStepSetting, getRegistrationStepStatus } from "@/lib/registrationSettings"
 import { putFileBlob } from "@/lib/fileStore" 
 import { getTopUp, withExtraFlow } from "@/lib/extraAthleteFlow"
 import type { Registration } from "@/types/registration"
@@ -39,6 +40,7 @@ function formatISO(iso?: string) {
 export default function Step2PembayaranPage() {
   const { user } = useAuth()
   const { state, hydrateReady, setPaymentProof, dispatch } = useRegistration()
+  const { settings, isReady } = useRegistrationSettings()
 
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [note, setNote] = useState<string>("")
@@ -47,7 +49,7 @@ export default function Step2PembayaranPage() {
   const [isSubmittingTopUp, setIsSubmittingTopUp] = useState(false)
   const [isSubmittingProof, setIsSubmittingProof] = useState(false)
   const hybridState = state as HybridRegistrationState
-  const step2Status = getRegistrationStepStatus(getRegistrationStepSetting("step2", readRegistrationSettings()))
+  const step2Status = getRegistrationStepStatus(getRegistrationStepSetting("step2", settings))
 
   useEffect(() => {
     setNote(state.payment.note ?? "")
@@ -64,7 +66,7 @@ export default function Step2PembayaranPage() {
     if (state.payment.status === "APPROVED") return false
 
     return true
-  }, [selectedSportsCount, state.payment.status])
+  }, [selectedSportsCount, state.payment.status, step2Status.isOpen])
 
   const canUploadTopUp = step2Status.isOpen && topUp.additionalAthletes > 0 && (topUp.status === "REQUIRED" || topUp.status === "REJECTED")
 
@@ -164,7 +166,7 @@ export default function Step2PembayaranPage() {
     setSelectedTopUpFile(file)
   }
 
-  if (!hydrateReady) {
+  if (!hydrateReady || !isReady) {
     return (
       <div className="max-w-5xl">
         <Card variant="glass">

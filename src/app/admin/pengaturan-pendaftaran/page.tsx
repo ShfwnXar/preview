@@ -39,7 +39,7 @@ export default function PengaturanPendaftaranPage() {
     setMessageByStep((prev) => ({ ...prev, [stepKey]: "" }))
   }
 
-  const saveStep = (stepKey: RegistrationStepKey) => {
+  const saveStep = async (stepKey: RegistrationStepKey) => {
     const step = settings.steps[stepKey]
     if (!step.startDate || !step.endDate) {
       setMessageByStep((prev) => ({ ...prev, [stepKey]: "Start date dan end date wajib diisi." }))
@@ -125,7 +125,7 @@ export default function PengaturanPendaftaranPage() {
                 Step ini otomatis aktif hanya saat tanggal hari ini berada di antara start date dan end date.
               </div>
               <button
-                onClick={() => saveStep(step.key)}
+                onClick={() => void saveStep(step.key)}
                 className="rounded-lg bg-emerald-600 px-4 py-2 font-bold text-white hover:bg-emerald-700"
               >
                 Simpan

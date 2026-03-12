@@ -16,6 +16,7 @@ export type RegistrationSettings = {
 }
 
 export type RegistrationStepAvailability = "UPCOMING" | "OPEN" | "CLOSED"
+export const REGISTRATION_SETTINGS_UPDATED_EVENT = "mg26:registration-settings-updated"
 
 export const REGISTRATION_SETTINGS_KEY = "mg26_registration_settings"
 
@@ -126,6 +127,7 @@ export function readRegistrationSettings(): RegistrationSettings {
 export function writeRegistrationSettings(settings: RegistrationSettings) {
   if (typeof window === "undefined") return
   localStorage.setItem(REGISTRATION_SETTINGS_KEY, JSON.stringify(settings))
+  window.dispatchEvent(new CustomEvent(REGISTRATION_SETTINGS_UPDATED_EVENT, { detail: settings }))
 }
 
 export function isDateInRange(startDate: string, endDate: string, now = new Date()) {

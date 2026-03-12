@@ -5,13 +5,13 @@ import { usePathname } from "next/navigation"
 import { useMemo, useState } from "react"
 import { useAuth } from "@/context/AuthContext"
 import { useRegistration } from "@/context/RegistrationContext"
+import { useRegistrationSettings } from "@/hooks/useRegistrationSettings"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Badge } from "@/components/ui/Badge"
 import { Button } from "@/components/ui/Button"
 import {
   getRegistrationStepSetting,
   getRegistrationStepStatus,
-  readRegistrationSettings,
   type RegistrationStepKey,
 } from "@/lib/registrationSettings"
 
@@ -48,9 +48,9 @@ function Stepper() {
   const { user } = useAuth()
   const { state, hydrateReady } = useRegistration()
   const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
-  const settings = readRegistrationSettings()
+  const { settings, isReady } = useRegistrationSettings()
 
-  if (!hydrateReady) {
+  if (!hydrateReady || !isReady) {
     return (
       <Card variant="glass">
         <CardHeader>
@@ -238,13 +238,13 @@ function Stepper() {
 export default function PendaftaranLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const currentStepKey = useMemo(() => getCurrentStepKey(pathname), [pathname])
-  const settings = readRegistrationSettings()
+  const { settings, isReady } = useRegistrationSettings()
   const currentStepStatus = currentStepKey ? getRegistrationStepStatus(getRegistrationStepSetting(currentStepKey, settings)) : null
 
   return (
     <div className="space-y-6">
       <Stepper />
-      {currentStepStatus && !currentStepStatus.isOpen ? (
+      {isReady && currentStepStatus && !currentStepStatus.isOpen ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
           <div className="font-extrabold text-amber-950">{currentStepStatus.label} - {currentStepStatus.statusLabel}</div>
           <div className="mt-1">{currentStepStatus.closedMessage}</div>
