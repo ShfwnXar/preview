@@ -210,14 +210,14 @@ export default function AdminDownloadPage() {
 
   // Build opsi cabor yang muncul dari data (lebih akurat)
   const availableSports = useMemo(() => {
-    const set = new Map<string, string>()
-    for (const x of pesertaWithReg) {
-      for (const s of x.reg.sports ?? []) {
-        set.set(s.id, s.name || sportNameById(s.id))
-      }
+    if (adminUser?.role === "ADMIN_CABOR") {
+      return SPORTS_CATALOG
+        .filter((sport) => canAccessSport(sport.id))
+        .map((sport) => ({ id: sport.id, name: sport.name }))
     }
-    return Array.from(set.entries()).map(([id, name]) => ({ id, name }))
-  }, [pesertaWithReg])
+
+    return SPORTS_CATALOG.map((sport) => ({ id: sport.id, name: sport.name }))
+  }, [adminUser, canAccessSport])
 
   // Build opsi kategori berdasar sportFilter
   const availableCategories = useMemo(() => {

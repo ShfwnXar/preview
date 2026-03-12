@@ -366,6 +366,28 @@ export default function AdminPembayaranPage() {
             <option value="ACC">Approved</option>
             <option value="BELUM_ACC">Belum Approved</option>
           </select>
+          <div className="md:col-span-2">
+            <label className="mb-2 block text-sm font-semibold text-gray-700">Pilih kontingen yang ingin divalidasi</label>
+            <select
+              value={targetUserId}
+              onChange={(e) => setTargetUserId(e.target.value)}
+              className="w-full rounded-2xl border px-4 py-3"
+              disabled={filteredKontingen.length === 0}
+            >
+              {filteredKontingen.length === 0 ? (
+                <option value="">Tidak ada kontingen yang cocok</option>
+              ) : (
+                filteredKontingen.map(({ u, reg }) => (
+                  <option key={u.id} value={u.id}>
+                    {u.institutionName} - {reg.payment?.status ?? "NONE"} - {reg.sports.map((sport) => sport.name).join(", ")}
+                  </option>
+                ))
+              )}
+            </select>
+            <div className="mt-2 text-xs text-gray-500">
+              Dropdown ini menentukan data pembayaran mana yang sedang Anda validasi.
+            </div>
+          </div>
         </CardContent>
       </Card>
 
