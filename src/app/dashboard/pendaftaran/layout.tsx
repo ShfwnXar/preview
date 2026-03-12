@@ -38,6 +38,11 @@ function formatWindow(startDate: string, endDate: string) {
   return `${startDate} s.d. ${endDate}`
 }
 
+function getStepNote(stepStatus: ReturnType<typeof getRegistrationStepStatus>, openNote: string) {
+  if (stepStatus.isOpen) return openNote
+  return `${stepStatus.statusLabel} (${formatWindow(stepStatus.startDate, stepStatus.endDate)})`
+}
+
 function Stepper() {
   const pathname = usePathname()
   const { user } = useAuth()
@@ -85,28 +90,30 @@ function Stepper() {
       key: "step1" as const,
       label: "Step 1 - Pilih Cabor",
       href: "/dashboard/pendaftaran",
-      note: step1Status.isOpen ? (isLocked ? "Terkunci karena pembayaran sudah diajukan/diverifikasi" : "Buka sesuai jadwal") : "Ditutup (" + formatWindow(step1Status.startDate, step1Status.endDate) + ")",
+      note: step1Status.isOpen
+        ? (isLocked ? "Terkunci karena pembayaran sudah diajukan/diverifikasi" : "Buka sesuai jadwal")
+        : getStepNote(step1Status, "Buka sesuai jadwal"),
       disabled: !step1Status.isOpen,
     },
     {
       key: "step2" as const,
       label: "Step 2 - Pembayaran",
       href: "/dashboard/pembayaran",
-      note: step2Status.isOpen ? "Upload bukti pembayaran" : "Ditutup (" + formatWindow(step2Status.startDate, step2Status.endDate) + ")",
+      note: getStepNote(step2Status, "Upload bukti pembayaran"),
       disabled: !step2Status.isOpen,
     },
     {
       key: "step3" as const,
       label: "Step 3 - Input Atlet + Kategori",
       href: "/dashboard/pendaftaran/atlet",
-      note: step3Status.isOpen ? "Pilih kategori per atlet sesuai kuota" : "Ditutup (" + formatWindow(step3Status.startDate, step3Status.endDate) + ")",
+      note: getStepNote(step3Status, "Pilih kategori per atlet sesuai kuota"),
       disabled: !step3Status.isOpen || state.payment.status !== "APPROVED",
     },
     {
       key: "step4" as const,
       label: "Step 4 - Upload Dokumen Atlet",
       href: "/dashboard/pendaftaran/dokumen",
-      note: step4Status.isOpen ? "Upload 5 dokumen per atlet" : "Ditutup (" + formatWindow(step4Status.startDate, step4Status.endDate) + ")",
+      note: getStepNote(step4Status, "Upload 5 dokumen per atlet"),
       disabled: !step4Status.isOpen || state.payment.status !== "APPROVED",
     },
   ]
@@ -173,7 +180,14 @@ function Stepper() {
                   if (s.disabled) {
                     e.preventDefault()
                     if (scheduleClosed) {
-                      alert("Step ini sedang ditutup admin karena berada di luar rentang tanggal aktif.")
+                      const status = s.key === "step1"
+                        ? step1Status
+                        : s.key === "step2"
+                        ? step2Status
+                        : s.key === "step3"
+                        ? step3Status
+                        : step4Status
+                      alert(status.closedMessage)
                       return
                     }
                     alert("Step ini hanya bisa dibuka setelah pembayaran APPROVED.")
@@ -199,7 +213,13 @@ function Stepper() {
 
                 {s.disabled && (
                   <div className="mt-2 text-xs text-amber-700 font-semibold">
-                    {scheduleClosed ? "Terkunci oleh jadwal admin" : "Terkunci sampai pembayaran APPROVED"}
+                    {scheduleClosed ? `Terkunci oleh jadwal admin (${s.key === "step1"
+                      ? step1Status.statusLabel
+                      : s.key === "step2"
+                      ? step2Status.statusLabel
+                      : s.key === "step3"
+                      ? step3Status.statusLabel
+                      : step4Status.statusLabel})` : "Terkunci sampai pembayaran APPROVED"}
                   </div>
                 )}
               </Link>
@@ -226,8 +246,11 @@ export default function PendaftaranLayout({ children }: { children: React.ReactN
       <Stepper />
       {currentStepStatus && !currentStepStatus.isOpen ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-          <div className="font-extrabold text-amber-950">{currentStepStatus.label} sedang ditutup</div>
-          <div className="mt-1">Step ini hanya aktif pada rentang tanggal {formatWindow(currentStepStatus.startDate, currentStepStatus.endDate)}.</div>
+          <div className="font-extrabold text-amber-950">{currentStepStatus.label} - {currentStepStatus.statusLabel}</div>
+          <div className="mt-1">{currentStepStatus.closedMessage}</div>
+          <div className="mt-2 text-xs text-amber-800">
+            Jadwal aktif: {formatWindow(currentStepStatus.startDate, currentStepStatus.endDate)}.
+          </div>
         </div>
       ) : children}
     </div>

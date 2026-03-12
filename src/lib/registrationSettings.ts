@@ -15,6 +15,8 @@ export type RegistrationSettings = {
   steps: Record<RegistrationStepKey, RegistrationStepSetting>
 }
 
+export type RegistrationStepAvailability = "UPCOMING" | "OPEN" | "CLOSED"
+
 export const REGISTRATION_SETTINGS_KEY = "mg26_registration_settings"
 
 export const REGISTRATION_STEP_ORDER: RegistrationStepKey[] = ["step1", "step2", "step3", "step4"]
@@ -132,12 +134,36 @@ export function isDateInRange(startDate: string, endDate: string, now = new Date
   return startDate <= currentDate && currentDate <= endDate
 }
 
+export function getRegistrationStepAvailability(step: RegistrationStepSetting, now = new Date()): RegistrationStepAvailability {
+  if (!step.startDate || !step.endDate) return "CLOSED"
+
+  const currentDate = formatLocalDate(now)
+  if (currentDate < step.startDate) return "UPCOMING"
+  if (currentDate > step.endDate) return "CLOSED"
+  return "OPEN"
+}
+
+export function getRegistrationStepClosedMessage(status: RegistrationStepAvailability) {
+  if (status === "UPCOMING") {
+    return "Tahap ini saat ini belum tersedia atau telah ditutup. Silakan cek kembali sesuai jadwal yang ditentukan. Jika Anda mengalami kendala, hubungi admin atau penyelenggara."
+  }
+
+  if (status === "CLOSED") {
+    return "Step ini telah ditutup. Jika terdapat kendala atau membutuhkan bantuan, silakan hubungi admin atau penyelenggara."
+  }
+
+  return ""
+}
+
 export function getRegistrationStepStatus(step: RegistrationStepSetting, now = new Date()) {
-  const isOpen = isDateInRange(step.startDate, step.endDate, now)
+  const availability = getRegistrationStepAvailability(step, now)
+  const isOpen = availability === "OPEN"
   return {
     ...step,
+    availability,
     isOpen,
-    statusLabel: isOpen ? "Dibuka" : "Ditutup",
+    statusLabel: availability === "OPEN" ? "Dibuka" : availability === "UPCOMING" ? "Belum tersedia" : "Ditutup",
+    closedMessage: getRegistrationStepClosedMessage(availability),
   }
 }
 

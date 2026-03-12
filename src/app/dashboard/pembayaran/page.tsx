@@ -180,6 +180,35 @@ export default function Step2PembayaranPage() {
     )
   }
 
+  if (!step2Status.isOpen) {
+    return (
+      <div className="max-w-5xl space-y-6">
+        <Card variant="soft">
+          <CardHeader>
+            <CardTitle>Step 2 - Pembayaran</CardTitle>
+            <CardDescription>Status saat ini: {step2Status.statusLabel}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <div className="font-extrabold text-amber-950">{step2Status.closedMessage}</div>
+              <div className="mt-2 text-xs text-amber-800">
+                Jadwal aktif: {step2Status.startDate} - {step2Status.endDate}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 md:flex-row">
+              <Link href="/dashboard/pendaftaran">
+                <Button variant="secondary">Kembali ke Step 1</Button>
+              </Link>
+              <Link href="/dashboard/status">
+                <Button variant="primary">Lihat Status</Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-6xl space-y-6">
       {/* Header */}
