@@ -16,7 +16,18 @@ export default function DaftarPage() {
   const { register } = useAuth()
   const router = useRouter()
 
-  const [form, setForm] = useState({ institutionName: "", institutionType: "SMA_MA" as InstitutionType, address: "", picName: "", email: "", phone: "", password: "", confirmPassword: "" })
+  const [form, setForm] = useState({
+    institutionName: "",
+    institutionType: "SMA_MA" as InstitutionType,
+    originProvince: "",
+    originRegion: "",
+    address: "",
+    picName: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: "",
+  })
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
@@ -41,6 +52,8 @@ export default function DaftarPage() {
     const res = register({
       institutionName: form.institutionName,
       institutionType: form.institutionType,
+      originProvince: form.originProvince,
+      originRegion: form.originRegion,
       address: form.address,
       picName: form.picName,
       email: form.email,
@@ -78,6 +91,11 @@ export default function DaftarPage() {
             <Select label="Jenis Instansi" value={form.institutionType} onChange={(e) => setField("institutionType", e.target.value as InstitutionType)} hint="Gunakan jenis instansi yang paling sesuai.">
               {institutionTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Input label="Asal Pimpinan Wilayah" placeholder="Contoh: PWM Jawa Tengah" value={form.originProvince} onChange={(e) => setField("originProvince", e.target.value)} />
+              <Input label="Asal Pimpinan Daerah" placeholder="Contoh: PDM Kota Surakarta" value={form.originRegion} onChange={(e) => setField("originRegion", e.target.value)} />
+            </div>
 
             <Textarea label="Alamat Instansi" placeholder="Alamat lengkap instansi" className="min-h-[90px]" value={form.address} onChange={(e) => setField("address", e.target.value)} />
             <Input label="Nama PIC (Penanggung Jawab)" placeholder="Nama penanggung jawab kontingen" value={form.picName} onChange={(e) => setField("picName", e.target.value)} />

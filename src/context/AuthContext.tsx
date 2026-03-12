@@ -20,6 +20,8 @@ export type User = {
   role: Role
   institutionName: string
   institutionType: InstitutionType
+  originProvince?: string
+  originRegion?: string
   address: string
   picName: string
   email: string
@@ -36,6 +38,8 @@ type StoredUser = User & {
 type RegisterInput = {
   institutionName: string
   institutionType: InstitutionType
+  originProvince?: string
+  originRegion?: string
   address: string
   picName: string
   email: string
@@ -217,6 +221,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: "PESERTA",
       institutionName: input.institutionName.trim(),
       institutionType: input.institutionType,
+      originProvince: input.originProvince?.trim() || undefined,
+      originRegion: input.originRegion?.trim() || undefined,
       address: input.address.trim(),
       picName: input.picName.trim(),
       email,

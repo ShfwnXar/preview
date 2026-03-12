@@ -105,6 +105,8 @@ export class MockAuthRepo implements AuthRepository {
       role: "PESERTA",
       institutionName: input.institutionName.trim(),
       institutionType: input.institutionType,
+      originProvince: input.originProvince?.trim() || undefined,
+      originRegion: input.originRegion?.trim() || undefined,
       address: input.address.trim(),
       picName: input.picName.trim(),
       email,

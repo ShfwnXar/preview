@@ -17,6 +17,8 @@ export default function ProfilePage() {
   const [form, setForm] = useState({
     institutionName: "",
     institutionType: "SMA_MA" as InstitutionType,
+    originProvince: "",
+    originRegion: "",
     address: "",
     picName: "",
     email: "",
@@ -39,6 +41,8 @@ export default function ProfilePage() {
     setForm({
       institutionName: user.institutionName,
       institutionType: user.institutionType,
+      originProvince: user.originProvince ?? "",
+      originRegion: user.originRegion ?? "",
       address: user.address,
       picName: user.picName,
       email: user.email,
@@ -83,6 +87,8 @@ export default function ProfilePage() {
             ...u,
             institutionName: isLocked ? u.institutionName : form.institutionName,
             institutionType: isLocked ? u.institutionType : form.institutionType,
+            originProvince: form.originProvince.trim() || undefined,
+            originRegion: form.originRegion.trim() || undefined,
             address: form.address,
             picName: form.picName,
             email: form.email,
@@ -223,6 +229,26 @@ export default function ProfilePage() {
               />
             </div>
 
+            <div>
+              <label className="mb-1.5 block text-sm font-bold text-gray-800">Asal Pimpinan Wilayah</label>
+              <input
+                value={form.originProvince}
+                onChange={(e) => setForm({ ...form, originProvince: e.target.value })}
+                className={fieldClass()}
+                placeholder="Contoh: PWM Jawa Tengah"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-bold text-gray-800">Asal Pimpinan Daerah</label>
+              <input
+                value={form.originRegion}
+                onChange={(e) => setForm({ ...form, originRegion: e.target.value })}
+                className={fieldClass()}
+                placeholder="Contoh: PDM Kota Surakarta"
+              />
+            </div>
+
             <div className="md:col-span-2">
               <label className="mb-1.5 block text-sm font-bold text-gray-800">Alamat</label>
               <textarea
@@ -271,6 +297,14 @@ export default function ProfilePage() {
             <div className="rounded-xl border bg-gray-50 px-3 py-2">
               <div className="text-xs font-bold uppercase tracking-[0.1em] text-gray-500">PIC</div>
               <div className="mt-1 font-semibold text-gray-900">{user.picName}</div>
+            </div>
+            <div className="rounded-xl border bg-gray-50 px-3 py-2">
+              <div className="text-xs font-bold uppercase tracking-[0.1em] text-gray-500">Asal Pimpinan Wilayah</div>
+              <div className="mt-1 font-semibold text-gray-900">{user.originProvince || "-"}</div>
+            </div>
+            <div className="rounded-xl border bg-gray-50 px-3 py-2">
+              <div className="text-xs font-bold uppercase tracking-[0.1em] text-gray-500">Asal Pimpinan Daerah</div>
+              <div className="mt-1 font-semibold text-gray-900">{user.originRegion || "-"}</div>
             </div>
             <div className="rounded-xl border bg-gray-50 px-3 py-2">
               <div className="text-xs font-bold uppercase tracking-[0.1em] text-gray-500">Email Login</div>

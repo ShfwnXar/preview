@@ -9,6 +9,8 @@ export type LoginResponse = { accessToken: string; user: User }
 export type RegisterRequest = {
   institutionName: string
   institutionType: InstitutionType
+  originProvince?: string
+  originRegion?: string
   address: string
   picName: string
   email: string
