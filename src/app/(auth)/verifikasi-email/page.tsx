@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/context/AuthContext"
 import { eventConfig } from "@/lib/eventConfig"
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Toast } from "@/components/ui/Toast"
 
-export default function VerifyEmailPage() {
+function VerifyEmailPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { verifyEmail, requestEmailVerification } = useAuth()
@@ -158,5 +158,13 @@ export default function VerifyEmailPage() {
         </section>
       </div>
     </main>
+  )
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={null}>
+      <VerifyEmailPageContent />
+    </Suspense>
   )
 }
