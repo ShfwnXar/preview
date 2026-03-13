@@ -64,7 +64,14 @@ export default function DaftarPage() {
 
     setLoading(false)
     setMessage({ type: res.ok ? "success" : "error", text: res.message })
-    if (res.ok) setTimeout(() => router.push("/login"), 900)
+    if (res.ok) {
+      const normalizedEmail = form.email.trim().toLowerCase()
+      try {
+        localStorage.setItem("mg26_pending_verify_email", normalizedEmail)
+      } catch {}
+      const email = encodeURIComponent(normalizedEmail)
+      setTimeout(() => router.push(`/verifikasi-email?email=${email}`), 900)
+    }
   }
 
   return (
@@ -114,6 +121,7 @@ export default function DaftarPage() {
           </form>
 
           <p className="mt-6 text-center text-sm text-gray-600">Sudah punya akun? <Link href="/login" className="font-bold text-emerald-700 hover:underline">Login di sini</Link></p>
+          <p className="mt-2 text-center text-sm text-gray-600">Belum verifikasi email? <Link href="/verifikasi-email" className="font-bold text-emerald-700 hover:underline">Verifikasi di sini</Link></p>
         </section>
       </div>
     </main>

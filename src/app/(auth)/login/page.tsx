@@ -92,6 +92,7 @@ export default function LoginPage() {
           )}
 
           <p className="mt-5 text-sm text-gray-700">Belum punya akun? <Link href="/daftar" className="font-bold text-emerald-700 hover:underline">Daftar di sini</Link></p>
+          <p className="mt-1 text-sm text-gray-700">Belum verifikasi email? <Link href="/verifikasi-email" className="font-bold text-emerald-700 hover:underline">Buka menu verifikasi</Link></p>
         </section>
       </div>
     </main>

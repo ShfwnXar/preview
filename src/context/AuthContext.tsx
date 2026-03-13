@@ -25,6 +25,7 @@ export type User = {
   address: string
   picName: string
   email: string
+  emailVerifiedAt?: string
   phone: string
   isActive?: boolean
   assignedSportIds?: string[]
@@ -33,6 +34,9 @@ export type User = {
 
 type StoredUser = User & {
   password: string
+  emailVerificationCode?: string
+  emailVerificationExpiresAt?: string
+  emailVerificationSentAt?: string
 }
 
 type RegisterInput = {
@@ -70,6 +74,8 @@ type AuthContextValue = {
   user: User | null
   isAuthenticated: boolean
   register: (input: RegisterInput) => { ok: boolean; message: string }
+  requestEmailVerification: (email: string) => { ok: boolean; message: string; code?: string }
+  verifyEmail: (input: { email: string; code: string }) => { ok: boolean; message: string }
   login: (input: LoginInput) => { ok: boolean; message: string }
   logout: () => void
   generateResetToken: (email: string) => { ok: boolean; message: string; token?: string }
@@ -108,6 +114,16 @@ function randomToken(len = 6) {
   let out = ""
   for (let i = 0; i < len; i++) out += digits[Math.floor(Math.random() * digits.length)]
   return out
+}
+
+function buildVerificationData() {
+  const now = new Date()
+  const expires = new Date(now.getTime() + 30 * 60 * 1000)
+  return {
+    code: randomToken(6),
+    sentAt: now.toISOString(),
+    expiresAt: expires.toISOString(),
+  }
 }
 
 function getResetTokens(): ResetToken[] {
@@ -215,6 +231,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const now = new Date().toISOString()
+    const verification = buildVerificationData()
 
     const newUser: StoredUser = {
       id: uid(),
@@ -226,14 +243,93 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       address: input.address.trim(),
       picName: input.picName.trim(),
       email,
+      emailVerifiedAt: undefined,
       phone: input.phone.trim(),
       password: input.password,
+      emailVerificationCode: verification.code,
+      emailVerificationExpiresAt: verification.expiresAt,
+      emailVerificationSentAt: verification.sentAt,
       createdAt: now,
     }
 
     setAllUsers([newUser, ...users])
 
-    return { ok: true, message: "Akun berhasil dibuat. Silakan login." }
+    return { ok: true, message: "Akun berhasil dibuat. Silakan verifikasi email terlebih dahulu." }
+  }
+
+  const requestEmailVerification = (emailInput: string) => {
+    const email = normalizeEmail(emailInput)
+    if (!isValidEmail(email)) return { ok: false, message: "Format email tidak valid." }
+
+    const users = getAllUsers()
+    const idx = users.findIndex((u) => normalizeEmail(u.email) === email)
+    if (idx === -1) return { ok: false, message: "Akun tidak ditemukan." }
+
+    const target = users[idx]
+    if (target.role !== "PESERTA") {
+      return { ok: false, message: "Verifikasi email hanya untuk akun peserta." }
+    }
+    if (target.emailVerifiedAt) {
+      return { ok: false, message: "Email akun ini sudah terverifikasi." }
+    }
+
+    const verification = buildVerificationData()
+    const updated: StoredUser = {
+      ...target,
+      emailVerificationCode: verification.code,
+      emailVerificationExpiresAt: verification.expiresAt,
+      emailVerificationSentAt: verification.sentAt,
+    }
+    users[idx] = updated
+    setAllUsers(users)
+
+    return {
+      ok: true,
+      message: "Kode verifikasi baru berhasil dibuat. (Mock) Gunakan kode yang tampil.",
+      code: verification.code,
+    }
+  }
+
+  const verifyEmail = (input: { email: string; code: string }) => {
+    const email = normalizeEmail(input.email)
+    const code = (input.code || "").trim()
+
+    if (!isValidEmail(email)) return { ok: false, message: "Format email tidak valid." }
+    if (code.length < 4) return { ok: false, message: "Kode verifikasi tidak valid." }
+
+    const users = getAllUsers()
+    const idx = users.findIndex((u) => normalizeEmail(u.email) === email)
+    if (idx === -1) return { ok: false, message: "Akun tidak ditemukan." }
+
+    const target = users[idx]
+    if (target.role !== "PESERTA") {
+      return { ok: false, message: "Verifikasi email hanya untuk akun peserta." }
+    }
+    if (target.emailVerifiedAt) {
+      return { ok: true, message: "Email sudah terverifikasi. Silakan login." }
+    }
+    if (!target.emailVerificationCode || !target.emailVerificationExpiresAt) {
+      return { ok: false, message: "Kode verifikasi belum tersedia. Kirim ulang kode terlebih dahulu." }
+    }
+
+    if (target.emailVerificationCode !== code) {
+      return { ok: false, message: "Kode verifikasi salah." }
+    }
+
+    if (new Date(target.emailVerificationExpiresAt).getTime() < Date.now()) {
+      return { ok: false, message: "Kode verifikasi kedaluwarsa. Kirim ulang kode." }
+    }
+
+    const nextUser: StoredUser = {
+      ...target,
+      emailVerifiedAt: new Date().toISOString(),
+      emailVerificationCode: undefined,
+      emailVerificationExpiresAt: undefined,
+    }
+    users[idx] = nextUser
+    setAllUsers(users)
+
+    return { ok: true, message: "Email berhasil diverifikasi. Silakan login." }
   }
 
   const login = (input: LoginInput) => {
@@ -247,6 +343,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const found = users.find((u) => normalizeEmail(u.email) === email)
 
     if (!found) return { ok: false, message: "Akun tidak ditemukan." }
+    if (found.role === "PESERTA" && !found.emailVerifiedAt) {
+      return {
+        ok: false,
+        message: "Email belum diverifikasi. Buka menu Verifikasi Email terlebih dahulu.",
+      }
+    }
     if (found.password !== password) return { ok: false, message: "Password salah." }
 
     localStorage.setItem(LS_SESSION_KEY, JSON.stringify({ userId: found.id }))
@@ -350,6 +452,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       isAuthenticated: !!user,
       register,
+      requestEmailVerification,
+      verifyEmail,
       login,
       logout,
       generateResetToken,
