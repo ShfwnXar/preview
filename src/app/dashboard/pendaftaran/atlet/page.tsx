@@ -3,11 +3,17 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { ENV } from "@/config/env"
+import type { Athlete as RegistrationAthlete } from "@/context/RegistrationContext"
 import { useRegistration } from "@/context/RegistrationContext"
 import { SPORTS_CATALOG } from "@/data/sportsCatalog"
+import { Input } from "@/components/ui/Input"
+import { Modal } from "@/components/ui/Modal"
 import type { AthleteDocuments } from "@/types/registration"
+import type { BackendTeam } from "@/types/api"
 import { useAuth } from "@/context/AuthContext"
 import { readRevisionMode } from "@/lib/registrationFlow"
+import { Repos } from "@/repositories"
 import {
   getActiveAthleteCount,
   getApprovedAthleteQuota,
@@ -19,6 +25,8 @@ import {
 } from "@/lib/extraAthleteFlow"
 
 type Gender = "PUTRA" | "PUTRI"
+type AthleteFormRow = { name: string; gender: Gender; birthDate: string; institution: string }
+type TeamFormState = { id?: string; name: string }
 
 type CatalogCategory = {
   id: string
@@ -96,7 +104,8 @@ function isAthleteDocsComplete(doc: AthleteDocuments | undefined | null) {
   if (!doc) return false
   return REQUIRED_DOCS.every((k) => {
     const d = doc[k]
-    return d?.status === "UPLOADED" || d?.status === "APPROVED"
+    const status = String(d?.status || "").toLowerCase()
+    return status === "uploaded" || status === "approved" || status === "pending"
   })
 }
 
@@ -106,7 +115,19 @@ function isAthleteComplete(a: any, doc: AthleteDocuments | undefined | null) {
 
 export default function Step3AtletPage() {
   const { user } = useAuth()
-  const { state, hydrateReady, addAthlete, removeAthlete, addOfficial, removeOfficial } = useRegistration()
+  const {
+    state,
+    hydrateReady,
+    addAthlete,
+    updateAthlete,
+    removeAthlete,
+    addOfficial,
+    removeOfficial,
+    syncAthleteBatch,
+    deleteAthleteRemote,
+    activeRegistrationId,
+    refreshRemoteRegistration,
+  } = useRegistration()
   const revisionOpen = user ? readRevisionMode(user.id) : false
 
   const paymentApproved = state.payment.status === "APPROVED" || revisionOpen
@@ -118,6 +139,20 @@ export default function Step3AtletPage() {
 
   const [selectedSportId, setSelectedSportId] = useState<string>("")
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("")
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("")
+  const [teams, setTeams] = useState<BackendTeam[]>([])
+  const [teamForm, setTeamForm] = useState<TeamFormState>({ name: "" })
+  const [teamModalOpen, setTeamModalOpen] = useState(false)
+  const [teamSubmitting, setTeamSubmitting] = useState(false)
+  const [teamMsg, setTeamMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [editingAthlete, setEditingAthlete] = useState<RegistrationAthlete | null>(null)
+  const [editAthleteForm, setEditAthleteForm] = useState<AthleteFormRow>({
+    name: "",
+    gender: "PUTRA",
+    birthDate: "",
+    institution: "",
+  })
+  const [athleteSubmitting, setAthleteSubmitting] = useState(false)
 
   // ==== SPORT OPTIONS (yang dipilih Step 1) ====
   // Support dua versi field:
@@ -166,6 +201,16 @@ export default function Step3AtletPage() {
     if (!selectedCategoryId) return null
     return categoriesForSport.find((c) => c.id === selectedCategoryId) ?? null
   }, [categoriesForSport, selectedCategoryId])
+
+  const teamsForSelection = useMemo(() => {
+    return teams.filter((team) => {
+      const teamSportId = String(team.sport_id ?? "")
+      const teamCategoryId = String(team.category_id ?? "")
+      if (teamSportId !== selectedSportId) return false
+      if (selectedCategoryId && teamCategoryId && teamCategoryId !== selectedCategoryId) return false
+      return true
+    })
+  }, [selectedCategoryId, selectedSportId, teams])
 
   const rosterSize = useMemo(() => {
     return inferRosterSize(selectedSportId, selectedCategory)
@@ -256,6 +301,35 @@ export default function Step3AtletPage() {
     if (categoriesForSport.length > 0) setSelectedCategoryId(categoriesForSport[0].id)
   }, [hydrateReady, selectedSportId, selectedCategoryId, categoriesForSport])
 
+  useEffect(() => {
+    if (ENV.USE_MOCK || !activeRegistrationId) {
+      setTeams([])
+      return
+    }
+
+    let cancelled = false
+    void Repos.registration.listTeams(activeRegistrationId)
+      .then((items) => {
+        if (cancelled) return
+        const filtered = items.filter((team) => String(team.registration_id ?? "") === activeRegistrationId)
+        setTeams(filtered)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setTeams([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeRegistrationId])
+
+  useEffect(() => {
+    if (!selectedTeamId) return
+    if (teamsForSelection.some((team) => String(team.id) === selectedTeamId)) return
+    setSelectedTeamId("")
+  }, [selectedTeamId, teamsForSelection])
+
   // ==== Officials per sport ====
   const officialsForSelectedSport = useMemo(() => {
     if (!selectedSportId) return []
@@ -278,7 +352,6 @@ export default function Step3AtletPage() {
   })
 
   // ==== Form atlet dynamic sesuai rosterSize ====
-  type AthleteFormRow = { name: string; gender: Gender; birthDate: string; institution: string }
   const [athleteForms, setAthleteForms] = useState<AthleteFormRow[]>([
     { name: "", gender: "PUTRA", birthDate: "", institution: "" },
   ])
@@ -349,6 +422,120 @@ export default function Step3AtletPage() {
 
   const canAddRoster = canUsePaidSlots || canUseExtraSlots
 
+  const reloadTeams = async () => {
+    if (ENV.USE_MOCK || !activeRegistrationId) return
+    const items = await Repos.registration.listTeams(activeRegistrationId)
+    setTeams(items.filter((team) => String(team.registration_id ?? "") === activeRegistrationId))
+  }
+
+  const openCreateTeam = () => {
+    setTeamForm({ name: "" })
+    setTeamMsg(null)
+    setTeamModalOpen(true)
+  }
+
+  const openEditTeam = (team: BackendTeam) => {
+    setTeamForm({ id: String(team.id), name: team.name ?? team.title ?? "" })
+    setTeamMsg(null)
+    setTeamModalOpen(true)
+  }
+
+  const submitTeam = async () => {
+    if (ENV.USE_MOCK) {
+      setTeamMsg({ type: "error", text: "Team CRUD hanya aktif saat API backend digunakan." })
+      return
+    }
+    if (!activeRegistrationId) {
+      setTeamMsg({ type: "error", text: "Draft registrasi belum tersedia." })
+      return
+    }
+    if (!selectedSportId) {
+      setTeamMsg({ type: "error", text: "Pilih cabor terlebih dahulu." })
+      return
+    }
+    if (!teamForm.name.trim()) {
+      setTeamMsg({ type: "error", text: "Nama tim wajib diisi." })
+      return
+    }
+
+    setTeamSubmitting(true)
+    setTeamMsg(null)
+    try {
+      const payload = {
+        registration_id: activeRegistrationId,
+        sport_id: selectedSportId,
+        category_id: selectedCategoryId || undefined,
+        name: teamForm.name.trim(),
+      }
+
+      if (teamForm.id) await Repos.registration.updateTeam(teamForm.id, payload)
+      else await Repos.registration.createTeam(payload)
+
+      await reloadTeams()
+      setTeamModalOpen(false)
+      setTeamMsg({ type: "success", text: teamForm.id ? "Tim berhasil diperbarui." : "Tim berhasil ditambahkan." })
+      setTeamForm({ name: "" })
+    } catch (error) {
+      setTeamMsg({ type: "error", text: error instanceof Error ? error.message : "Gagal menyimpan tim." })
+    } finally {
+      setTeamSubmitting(false)
+    }
+  }
+
+  const removeTeamRemote = async (teamId: string) => {
+    if (ENV.USE_MOCK || !activeRegistrationId) return
+    await Repos.registration.deleteTeam(teamId)
+    await reloadTeams()
+  }
+
+  const startEditAthlete = (athlete: RegistrationAthlete) => {
+    setEditingAthlete(athlete)
+    setEditAthleteForm({
+      name: athlete.name,
+      gender: athlete.gender,
+      birthDate: athlete.birthDate,
+      institution: athlete.institution,
+    })
+  }
+
+  const submitAthleteEdit = async () => {
+    if (!editingAthlete) return
+    if (!editAthleteForm.name.trim() || !editAthleteForm.birthDate) {
+      alert("Nama dan tanggal lahir atlet wajib diisi.")
+      return
+    }
+
+    setAthleteSubmitting(true)
+    try {
+      if (ENV.USE_MOCK || !activeRegistrationId) {
+        updateAthlete({
+          ...editingAthlete,
+          name: editAthleteForm.name.trim(),
+          gender: editAthleteForm.gender,
+          birthDate: editAthleteForm.birthDate,
+          institution: editAthleteForm.institution.trim(),
+        })
+      } else {
+        await Repos.registration.updateAthlete(editingAthlete.id, {
+          registration_id: activeRegistrationId,
+          team_id: (editingAthlete.teamId ?? selectedTeamId) || undefined,
+          sport_id: editingAthlete.sportId,
+          category_id: editingAthlete.categoryId,
+          name: editAthleteForm.name.trim(),
+          gender: editAthleteForm.gender,
+          birth_date: editAthleteForm.birthDate,
+          institution: editAthleteForm.institution.trim(),
+        })
+        await refreshRemoteRegistration(activeRegistrationId)
+      }
+      setEditingAthlete(null)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Gagal memperbarui atlet.")
+    } finally {
+      setAthleteSubmitting(false)
+    }
+  }
+
   const handleAddRoster = () => {
     if (!paymentApproved) return alert("Belum bisa input atlet: pembayaran harus APPROVED.")
     if (!selectedSportId) return alert("Pilih cabor terlebih dahulu.")
@@ -364,6 +551,25 @@ export default function Step3AtletPage() {
       return
     }
 
+    const rows = athleteForms.slice(0, needRoster).map((a) => ({
+      teamId: selectedTeamId || undefined,
+      sportId: selectedSportId,
+      categoryId: selectedCategoryId,
+      name: a.name.trim(),
+      gender: a.gender,
+      birthDate: a.birthDate,
+      institution: a.institution.trim(),
+    }))
+
+    if (!ENV.USE_MOCK) {
+      void syncAthleteBatch(rows).then(() => {
+        resetAthleteForms()
+      }).catch((error) => {
+        alert(error instanceof Error ? error.message : "Gagal menyimpan atlet ke server.")
+      })
+      return
+    }
+
     if (canUsePaidSlots) {
       for (let i = 0; i < needRoster; i++) {
         const a = athleteForms[i]
@@ -371,6 +577,7 @@ export default function Step3AtletPage() {
         if (!a?.birthDate) return alert("Tanggal lahir atlet " + (i + 1) + " wajib diisi.")
 
         addAthlete({
+          teamId: selectedTeamId || undefined,
           sportId: selectedSportId,
           categoryId: selectedCategoryId,
           name: a.name.trim(),
@@ -395,6 +602,7 @@ export default function Step3AtletPage() {
       if (!a?.birthDate) return alert("Tanggal lahir atlet " + (i + 1) + " wajib diisi.")
 
       addAthlete({
+        teamId: selectedTeamId || undefined,
         sportId: selectedSportId,
         categoryId: selectedCategoryId,
         name: a.name.trim(),
@@ -439,6 +647,89 @@ export default function Step3AtletPage() {
 
   return (
     <div className="max-w-6xl space-y-6">
+      <Modal
+        open={teamModalOpen}
+        onClose={() => setTeamModalOpen(false)}
+        title={teamForm.id ? "Edit Tim" : "Tambah Tim"}
+        className="max-w-xl"
+      >
+        <div className="space-y-4">
+          <Input
+            label="Nama Tim"
+            value={teamForm.name}
+            onChange={(e) => setTeamForm((prev) => ({ ...prev, name: e.target.value }))}
+            placeholder="Contoh: Tim Putra A"
+          />
+          {teamMsg ? (
+            <div className={cx(
+              "rounded-xl border px-4 py-3 text-sm font-semibold",
+              teamMsg.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-800"
+            )}>
+              {teamMsg.text}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void submitTeam()}
+            disabled={teamSubmitting}
+            className={cx(
+              "w-full rounded-xl px-4 py-2.5 font-extrabold",
+              teamSubmitting ? "bg-gray-200 text-gray-500" : "bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 text-white"
+            )}
+          >
+            {teamSubmitting ? "Menyimpan..." : teamForm.id ? "Simpan Perubahan Tim" : "Tambah Tim"}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!editingAthlete}
+        onClose={() => setEditingAthlete(null)}
+        title="Edit Atlet"
+        className="max-w-2xl"
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Input
+            label="Nama Atlet"
+            value={editAthleteForm.name}
+            onChange={(e) => setEditAthleteForm((prev) => ({ ...prev, name: e.target.value }))}
+          />
+          <div className="space-y-1">
+            <label className="block text-sm font-extrabold text-gray-900">Jenis Kelamin</label>
+            <select
+              value={editAthleteForm.gender}
+              onChange={(e) => setEditAthleteForm((prev) => ({ ...prev, gender: e.target.value as Gender }))}
+              className="w-full rounded-2xl border px-4 py-2.5 text-sm font-medium bg-white"
+            >
+              <option value="PUTRA">Putra</option>
+              <option value="PUTRI">Putri</option>
+            </select>
+          </div>
+          <Input
+            label="Tanggal Lahir"
+            type="date"
+            value={editAthleteForm.birthDate}
+            onChange={(e) => setEditAthleteForm((prev) => ({ ...prev, birthDate: e.target.value }))}
+          />
+          <Input
+            label="Asal Instansi"
+            value={editAthleteForm.institution}
+            onChange={(e) => setEditAthleteForm((prev) => ({ ...prev, institution: e.target.value }))}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => void submitAthleteEdit()}
+          disabled={athleteSubmitting}
+          className={cx(
+            "mt-4 w-full rounded-xl px-4 py-2.5 font-extrabold",
+            athleteSubmitting ? "bg-gray-200 text-gray-500" : "bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 text-white"
+          )}
+        >
+          {athleteSubmitting ? "Menyimpan..." : "Simpan Perubahan Atlet"}
+        </button>
+      </Modal>
+
       {/* Header */}
       <div className="bg-white border rounded-xl p-6 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
@@ -609,6 +900,89 @@ export default function Step3AtletPage() {
         </div>
       )}
 
+      {!!selectedSportId && (
+        <div className="bg-white border rounded-xl p-6 shadow-sm space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-lg font-extrabold text-gray-900">Manajemen Tim</div>
+              <div className="text-sm text-gray-600 mt-1">
+                Buat tim untuk cabor/kategori aktif jika diperlukan. Fitur ini memakai endpoint backend `teams`.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={openCreateTeam}
+              disabled={!activeRegistrationId || ENV.USE_MOCK}
+              className={cx(
+                "px-4 py-2 rounded-xl font-extrabold text-sm",
+                !activeRegistrationId || ENV.USE_MOCK
+                  ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                  : "bg-white border hover:bg-gray-50"
+              )}
+            >
+              Tambah Tim
+            </button>
+          </div>
+
+          {teamMsg ? (
+            <div className={cx(
+              "rounded-xl border px-4 py-3 text-sm font-semibold",
+              teamMsg.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-800"
+            )}>
+              {teamMsg.text}
+            </div>
+          ) : null}
+
+          {ENV.USE_MOCK ? (
+            <div className="text-sm text-gray-500">Team CRUD hanya aktif saat backend API digunakan.</div>
+          ) : teamsForSelection.length === 0 ? (
+            <div className="text-sm text-gray-500">Belum ada tim untuk filter cabor/kategori ini.</div>
+          ) : (
+            <div className="space-y-2">
+              {teamsForSelection.map((team) => (
+                <div key={team.id} className="rounded-xl border p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="font-extrabold text-gray-900">{team.name ?? team.title ?? `Tim ${team.id}`}</div>
+                    <div className="text-xs text-gray-600 mt-1">ID: {team.id}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTeamId(String(team.id))}
+                      className={cx(
+                        "px-3 py-2 rounded-xl border text-sm font-extrabold",
+                        selectedTeamId === String(team.id) ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "bg-white hover:bg-gray-50"
+                      )}
+                    >
+                      {selectedTeamId === String(team.id) ? "Tim Aktif" : "Pilih Tim"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openEditTeam(team)}
+                      className="px-3 py-2 rounded-xl border bg-white text-sm font-extrabold hover:bg-gray-50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!confirm("Hapus tim ini?")) return
+                        void removeTeamRemote(String(team.id)).catch((error) => {
+                          setTeamMsg({ type: "error", text: error instanceof Error ? error.message : "Gagal menghapus tim." })
+                        })
+                      }}
+                      className="px-3 py-2 rounded-xl bg-red-50 text-red-700 text-sm font-extrabold hover:bg-red-100"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Official */}
       {!!selectedSportId && (
         <div className="bg-white border rounded-xl p-6 shadow-sm space-y-4">
@@ -716,6 +1090,24 @@ export default function Step3AtletPage() {
               <div className="text-xs text-gray-500 mt-2">
                 Roster kategori terpilih: <b>{Math.max(1, rosterSize || 1)}</b> atlet
               </div>
+
+              {!ENV.USE_MOCK && (
+                <div className="mt-4">
+                  <div className="text-sm font-bold mb-1">Tim (opsional)</div>
+                  <select
+                    value={selectedTeamId}
+                    onChange={(e) => setSelectedTeamId(e.target.value)}
+                    className="w-full border rounded-xl px-3 py-2 bg-white"
+                  >
+                    <option value="">Tanpa tim</option>
+                    {teamsForSelection.map((team) => (
+                      <option key={team.id} value={String(team.id)}>
+                        {team.name ?? team.title ?? `Tim ${team.id}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border bg-gray-50 p-4">
@@ -863,6 +1255,11 @@ export default function Step3AtletPage() {
                     <div className="text-xs text-gray-600 mt-1">
                       <b>Kategori:</b> {categoryLabel(a.sportId, a.categoryId)}
                     </div>
+                    {a.teamId ? (
+                      <div className="text-xs text-gray-600 mt-1">
+                        <b>Tim:</b> {teams.find((team) => String(team.id) === String(a.teamId))?.name ?? a.teamId}
+                      </div>
+                    ) : null}
 
                     {/* Progres dokumen per atlet */}
                     {(() => {
@@ -890,16 +1287,32 @@ export default function Step3AtletPage() {
                     <div className="text-[11px] text-gray-400 mt-1">ID: {a.id}</div>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      if (!confirm("Hapus atlet ini?")) return
-                      removeAthlete(a.id)
-                    }}
-                    className="px-4 py-2 rounded-xl bg-red-50 text-red-700 font-extrabold hover:bg-red-100"
-                    disabled={!paymentApproved}
-                  >
-                    Hapus
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEditAthlete(a as RegistrationAthlete)}
+                      className="px-4 py-2 rounded-xl border bg-white font-extrabold hover:bg-gray-50"
+                      disabled={!paymentApproved}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!confirm("Hapus atlet ini?")) return
+                        if (!ENV.USE_MOCK && activeRegistrationId) {
+                          void deleteAthleteRemote(a.id).catch((error) => {
+                            alert(error instanceof Error ? error.message : "Gagal menghapus atlet.")
+                          })
+                          return
+                        }
+                        removeAthlete(a.id)
+                      }}
+                      className="px-4 py-2 rounded-xl bg-red-50 text-red-700 font-extrabold hover:bg-red-100"
+                      disabled={!paymentApproved}
+                    >
+                      Hapus
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

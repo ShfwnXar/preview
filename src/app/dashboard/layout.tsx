@@ -61,8 +61,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Button
                   variant="danger"
                   className="w-full"
-                  onClick={() => {
-                    logout()
+                  onClick={async () => {
+                    await logout()
                     router.replace("/login")
                   }}
                 >

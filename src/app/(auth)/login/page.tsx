@@ -30,11 +30,11 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, user, router])
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setMessage(null)
-    const res = login(form)
+    const res = await login(form)
     setLoading(false)
     setMessage({ type: res.ok ? "success" : "error", text: res.message })
   }

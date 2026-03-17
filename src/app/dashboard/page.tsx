@@ -1,7 +1,9 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/context/AuthContext"
+import { useRegistration } from "@/context/RegistrationContext"
 
 function canOpenExtraRequest(userId?: string) {
   if (!userId || typeof window === "undefined") return false
@@ -16,7 +18,9 @@ function canOpenExtraRequest(userId?: string) {
 }
 
 export default function DashboardHomePage() {
+  const router = useRouter()
   const { user } = useAuth()
+  const { registrationSummaries, openRegistration, deleteRegistration, activeRegistrationId } = useRegistration()
 
   if (!user) return null
   const canRequestExtra = canOpenExtraRequest(user.id)
@@ -134,6 +138,58 @@ export default function DashboardHomePage() {
           </Link>
         </div>
 
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-gray-900">Daftar Registrasi</h2>
+          {activeRegistrationId ? <div className="text-xs font-semibold text-emerald-700">Draft aktif: {activeRegistrationId}</div> : null}
+        </div>
+        {registrationSummaries.length === 0 ? (
+          <p className="mt-3 text-sm text-gray-500">Belum ada draft/backend registration. Mulai dari menu pendaftaran untuk membuat draft baru.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {registrationSummaries.map((registration) => (
+              <div key={registration.id} className="flex flex-col gap-3 rounded-xl border border-gray-200 p-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="font-bold text-gray-900">{registration.title}</div>
+                  <div className="mt-1 text-xs text-gray-500">ID: {registration.id} | Status: {registration.status}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await openRegistration(registration.id)
+                        router.push("/dashboard/pendaftaran")
+                      } catch (error) {
+                        window.alert(error instanceof Error ? error.message : "Gagal membuka detail registrasi.")
+                      }
+                    }}
+                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 font-semibold text-emerald-800 hover:bg-emerald-100"
+                  >
+                    Buka Detail
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = window.confirm("Hapus draft registrasi ini?")
+                      if (!ok) return
+                      try {
+                        await deleteRegistration(registration.id)
+                      } catch (error) {
+                        window.alert(error instanceof Error ? error.message : "Gagal menghapus registrasi.")
+                      }
+                    }}
+                    className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 font-semibold text-rose-800 hover:bg-rose-100"
+                  >
+                    Hapus
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

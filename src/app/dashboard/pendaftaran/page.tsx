@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useRegistration } from "@/context/RegistrationContext"
 import { useAuth } from "@/context/AuthContext"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card"
@@ -24,8 +25,18 @@ function cx(...classes: Array<string | false | null | undefined>) {
 }
 
 export default function Step1PilihCaborDanJumlahPage() {
+  const router = useRouter()
   const { user } = useAuth()
-  const { state, hydrateReady, setSports, updateSportPlanning, dispatch } = useRegistration()
+  const {
+    state,
+    hydrateReady,
+    setSports,
+    updateSportPlanning,
+    dispatch,
+    masterSports,
+    activeRegistrationId,
+    ensureDraftRegistration,
+  } = useRegistration()
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   const approvedTotal = useMemo(() => {
@@ -40,6 +51,14 @@ export default function Step1PilihCaborDanJumlahPage() {
 
   const selectedIds = useMemo(() => new Set(state.sports.map((s) => s.id)), [state.sports])
   const selectedCount = state.sports.length
+  const sportCatalog = useMemo(() => {
+    if (masterSports.length === 0) return SPORT_CATALOG
+    return masterSports.map((sport) => ({
+      id: String(sport.id),
+      name: sport.name ?? sport.title ?? String(sport.id),
+      desc: sport.description ?? "Data cabor dari backend.",
+    }))
+  }, [masterSports])
 
   const toggleSport = (id: string) => {
     setMsg(null)
@@ -55,7 +74,7 @@ export default function Step1PilihCaborDanJumlahPage() {
       return
     }
 
-    const cat = SPORT_CATALOG.find((x) => x.id === id)
+    const cat = sportCatalog.find((x) => x.id === id)
     const next = [
       ...state.sports,
       {
@@ -76,6 +95,19 @@ export default function Step1PilihCaborDanJumlahPage() {
     if (additionalDue <= 0) return
     dispatch({ type: "SET_PAYMENT_STATUS", status: "NONE" })
   }, [additionalDue, dispatch, state.payment.status])
+
+  const goToPayment = async () => {
+    if (selectedCount === 0) return
+    try {
+      await ensureDraftRegistration(state.sports.map((sport) => sport.id))
+      router.push("/dashboard/pembayaran")
+    } catch (error) {
+      setMsg({
+        type: "error",
+        text: error instanceof Error ? error.message : "Gagal membuat draft registrasi.",
+      })
+    }
+  }
 
   if (!hydrateReady) {
     return (
@@ -110,6 +142,7 @@ export default function Step1PilihCaborDanJumlahPage() {
                 <Badge tone="info">Terpilih: {selectedCount} cabor</Badge>
                 <Badge tone="neutral">Payment: {state.payment.status}</Badge>
                 <Badge tone="brand">Total: Rp {state.payment.totalFee.toLocaleString("id-ID")}</Badge>
+                {activeRegistrationId ? <Badge tone="success">Draft ID: {activeRegistrationId}</Badge> : null}
                 {isLocked ? <Badge tone="warning">Terkunci</Badge> : <Badge tone="success">Bisa diedit</Badge>}
                 {approvedTotal > 0 ? <Badge tone={additionalDue > 0 ? "warning" : "info"}>Pembayaran di-ACC: Rp {approvedTotal.toLocaleString("id-ID")}</Badge> : null}
               </div>
@@ -124,11 +157,9 @@ export default function Step1PilihCaborDanJumlahPage() {
             <div className="rounded-2xl border bg-white/70 backdrop-blur p-4 min-w-[320px]">
               <div className="text-xs text-gray-500">Aksi</div>
               <div className="mt-2 flex flex-col gap-2">
-                <Link href="/dashboard/pembayaran">
-                  <Button className="w-full" variant="primary" disabled={selectedCount === 0}>
+                <Button className="w-full" variant="primary" disabled={selectedCount === 0} onClick={goToPayment}>
                     Lanjut Step 2 (Pembayaran)
-                  </Button>
-                </Link>
+                </Button>
                 <Link href="/dashboard/status">
                   <Button className="w-full" variant="secondary">Lihat Status</Button>
                 </Link>
@@ -165,7 +196,7 @@ export default function Step1PilihCaborDanJumlahPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {SPORT_CATALOG.map((s) => {
+            {sportCatalog.map((s) => {
               const picked = selectedIds.has(s.id)
               return (
                 <button
@@ -338,11 +369,9 @@ export default function Step1PilihCaborDanJumlahPage() {
           )}
 
           <div className="flex flex-col md:flex-row gap-2 pt-2">
-            <Link href="/dashboard/pembayaran">
-              <Button variant="primary" disabled={selectedCount === 0}>
+            <Button variant="primary" disabled={selectedCount === 0} onClick={goToPayment}>
                 Lanjut Step 2 (Pembayaran)
-              </Button>
-            </Link>
+            </Button>
             <Link href="/dashboard/pendaftaran/atlet">
               <Button variant="secondary">
                 Ke Step 3 (butuh APPROVED)

@@ -44,12 +44,12 @@ export default function DaftarPage() {
 
   const setField = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }))
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setMessage(null)
 
-    const res = register({
+    const res = await register({
       institutionName: form.institutionName,
       institutionType: form.institutionType,
       originProvince: form.originProvince,

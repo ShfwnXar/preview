@@ -51,7 +51,7 @@ function formatISO(iso?: string) {
 
 export default function StatusPage() {
   const { user } = useAuth()
-  const { state, hydrateReady, dispatch } = useRegistration()
+  const { state, hydrateReady, dispatch, activeRegistrationId, submitRegistration } = useRegistration()
   const hybridState = state as HybridRegistrationState
   const approvedAthleteQuota = getApprovedAthleteQuota(hybridState)
   const activeAthleteCount = getActiveAthleteCount(hybridState)
@@ -245,6 +245,7 @@ export default function StatusPage() {
               {user?.institutionName ? (
                 <Badge text={user.institutionName} variant="gray" />
               ) : null}
+              {activeRegistrationId ? <Badge text={`Registration ID: ${activeRegistrationId}`} variant="gray" /> : null}
             </div>
           </div>
 
@@ -356,6 +357,35 @@ export default function StatusPage() {
             </div>
             {checklist.step3Ready || checklist.step4Ready ? <Badge text="Progress" variant="yellow" /> : <Badge text="Terkunci" variant="gray" />}
           </div>
+        </div>
+        <div className="mt-5">
+          <button
+            type="button"
+            disabled={!checklist.allStepsComplete || !activeRegistrationId}
+            onClick={async () => {
+              const ok = window.confirm("Submit registrasi ini ke panitia?")
+              if (!ok) return
+              try {
+                const result = await submitRegistration()
+                setActionMsg({ type: result.ok ? "success" : "error", text: result.message })
+              } catch (error) {
+                setActionMsg({
+                  type: "error",
+                  text: error instanceof Error ? error.message : "Gagal submit registrasi.",
+                })
+              }
+            }}
+            className={`w-full rounded-xl px-4 py-3 text-sm font-extrabold ${
+              checklist.allStepsComplete && activeRegistrationId
+                ? "bg-green-600 text-white hover:bg-green-700"
+                : "bg-gray-200 text-gray-500 cursor-not-allowed"
+            }`}
+          >
+            Submit Registrasi
+          </button>
+          {!activeRegistrationId ? (
+            <div className="mt-2 text-xs text-gray-500">Draft backend belum terbentuk. Simpan draft dari Step 1 terlebih dahulu.</div>
+          ) : null}
         </div>
       </div>
 

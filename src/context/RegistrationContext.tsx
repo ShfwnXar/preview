@@ -1,10 +1,19 @@
 "use client"
 
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react"
+import { ENV } from "@/config/env"
 import { useAuth } from "@/context/AuthContext"
+import { Repos } from "@/repositories"
+import {
+  isTerminalRegistrationStatus,
+  mapDocKeyToDocumentType,
+  mapRegistrationDetailToState,
+  summarizeRegistrationList,
+} from "@/lib/registrationApi"
+import type { BackendSport, BackendVenue } from "@/types/api"
 
 export type PaymentStatus = "NONE" | "PENDING" | "APPROVED" | "REJECTED"
-export type DocumentStatus = "EMPTY" | "UPLOADED" | "APPROVED" | "REJECTED"
+export type DocumentStatus = string
 
 export type DocFile = {
   status: DocumentStatus
@@ -42,6 +51,7 @@ export type SportEntry = {
 
 export type Athlete = {
   id: string
+  teamId?: string | null
   sportId: string
   categoryId: string
   name: string
@@ -74,6 +84,13 @@ export type RegistrationState = {
   officials: Official[]
   documents: AthleteDocuments[]
   payment: PaymentInfo
+  updatedAt?: string
+}
+
+export type RegistrationSummaryItem = {
+  id: string
+  status: string
+  title: string
   updatedAt?: string
 }
 
@@ -438,18 +455,30 @@ type RegistrationContextValue = {
   dispatch: React.Dispatch<Action>
   storageKey: string | null
   hydrateReady: boolean
+  remoteReady: boolean
+  activeRegistrationId: string | null
+  registrationSummaries: RegistrationSummaryItem[]
+  masterSports: BackendSport[]
+  venues: BackendVenue[]
 
   setSports: (sports: SportEntry[]) => void
   updateSportPlanning: (
     sportId: string,
     patch: Partial<Pick<SportEntry, "plannedAthletes" | "officialCount" | "voliMenTeams" | "voliWomenTeams">>
   ) => void
+  ensureDraftRegistration: (sportIds?: string[]) => Promise<string | null>
+  openRegistration: (registrationId: string) => Promise<void>
+  deleteRegistration: (registrationId: string) => Promise<void>
+  refreshRegistrationList: () => Promise<void>
+  refreshRemoteRegistration: (registrationId?: string) => Promise<void>
 
   setPaymentProof: (fileId: string, fileName: string, mimeType: string) => void
 
   addAthlete: (athlete: Omit<Athlete, "id">) => string
   updateAthlete: (athlete: Athlete) => void
   removeAthlete: (athleteId: string) => void
+  syncAthleteBatch: (athletes: Array<Omit<Athlete, "id">>) => Promise<void>
+  deleteAthleteRemote: (athleteId: string) => Promise<void>
 
   addOfficial: (official: Omit<Official, "id">) => string
   removeOfficial: (officialId: string) => void
@@ -461,25 +490,39 @@ type RegistrationContextValue = {
     fileName: string,
     mimeType: string
   ) => void
+  uploadDocument: (
+    athleteId: string,
+    docKey: keyof Omit<AthleteDocuments, "athleteId">,
+    file: File
+  ) => Promise<void>
+  submitRegistration: () => Promise<{ ok: boolean; message: string }>
 }
 
 const RegistrationContext = createContext<RegistrationContextValue | null>(null)
 
 export function RegistrationProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const [state, dispatch] = useReducer(reducer, initialState)
   const [hydrateReady, setHydrateReady] = React.useState(false)
+  const [remoteReady, setRemoteReady] = React.useState(false)
+  const [activeRegistrationId, setActiveRegistrationId] = React.useState<string | null>(null)
+  const [registrationSummaries, setRegistrationSummaries] = React.useState<RegistrationSummaryItem[]>([])
+  const [masterSports, setMasterSports] = React.useState<BackendSport[]>([])
+  const [venues, setVenues] = React.useState<BackendVenue[]>([])
 
   const storageKey = user ? `${LS_KEY_PREFIX}${user.id}` : null
 
   useEffect(() => {
-    if (!storageKey) return
+    if (!storageKey) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHydrateReady(true)
+      return
+    }
 
     const saved = safeParse<RegistrationState | null>(localStorage.getItem(storageKey), null)
     if (saved) dispatch({ type: "LOAD", payload: saved })
     else dispatch({ type: "LOAD", payload: initialState })
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHydrateReady(true)
   }, [storageKey])
 
@@ -493,15 +536,123 @@ export function RegistrationProvider({ children }: { children: React.ReactNode }
     }
   }, [state, storageKey, hydrateReady])
 
+  const refreshRegistrationList = React.useCallback(async () => {
+    if (ENV.USE_MOCK || !token) {
+      setRemoteReady(true)
+      return
+    }
+
+    const [sports, venueList, registrations] = await Promise.all([
+      Repos.registration.listSports().catch(() => []),
+      Repos.registration.listVenues().catch(() => []),
+      Repos.registration.listRegistrations().catch(() => []),
+    ])
+
+    setMasterSports(Array.isArray(sports) ? sports : [])
+    setVenues(Array.isArray(venueList) ? venueList : [])
+    setRegistrationSummaries(summarizeRegistrationList(Array.isArray(registrations) ? registrations : []))
+    setRemoteReady(true)
+  }, [token])
+
+  const refreshRemoteRegistration = React.useCallback(
+    async (registrationId?: string) => {
+      const targetId = registrationId ?? activeRegistrationId
+      if (ENV.USE_MOCK || !token || !targetId) return
+
+      const detail = await Repos.registration.getRegistrationById(targetId)
+      const documents = await Repos.registration.listRegistrationDocuments(targetId).catch(() => detail.documents ?? [])
+      dispatch({
+        type: "LOAD",
+        payload: mapRegistrationDetailToState({ ...detail, documents }, state),
+      })
+      setActiveRegistrationId(String(detail.id))
+    },
+    [activeRegistrationId, state, token]
+  )
+
+  const openRegistration = React.useCallback(
+    async (registrationId: string) => {
+      await refreshRemoteRegistration(registrationId)
+    },
+    [refreshRemoteRegistration]
+  )
+
+  const ensureDraftRegistration = React.useCallback(
+    async (sportIds?: string[]) => {
+      if (ENV.USE_MOCK || !token) return activeRegistrationId
+      const activeSummary = registrationSummaries.find((item) => item.id === activeRegistrationId)
+      if (activeRegistrationId && activeSummary && !isTerminalRegistrationStatus(activeSummary.status)) {
+        return activeRegistrationId
+      }
+
+      const selectedSportIds = (sportIds && sportIds.length > 0 ? sportIds : state.sports.map((sport) => sport.id)).filter(Boolean)
+      if (selectedSportIds.length === 0) return null
+
+      const created = await Repos.registration.createRegistration({
+        sport_ids: selectedSportIds,
+        venue_id: venues[0]?.id ?? null,
+      })
+
+      const nextId = String(created.id)
+      setActiveRegistrationId(nextId)
+      dispatch({ type: "LOAD", payload: mapRegistrationDetailToState(created, state) })
+      await refreshRegistrationList()
+      return nextId
+    },
+    [activeRegistrationId, refreshRegistrationList, registrationSummaries, state, token, venues]
+  )
+
+  useEffect(() => {
+    if (!hydrateReady) return
+    if (!token || ENV.USE_MOCK) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRemoteReady(true)
+      return
+    }
+
+    void refreshRegistrationList()
+  }, [hydrateReady, refreshRegistrationList, token])
+
+  useEffect(() => {
+    if (!remoteReady) return
+    if (activeRegistrationId) return
+    if (registrationSummaries.length === 0) return
+
+    const firstOpenable =
+      registrationSummaries.find((item) => !isTerminalRegistrationStatus(item.status)) ?? registrationSummaries[0]
+    const timer = window.setTimeout(() => {
+      void openRegistration(firstOpenable.id)
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [activeRegistrationId, openRegistration, registrationSummaries, remoteReady])
+
   const value = useMemo<RegistrationContextValue>(() => {
     return {
       state,
       dispatch,
       storageKey,
       hydrateReady,
+      remoteReady,
+      activeRegistrationId,
+      registrationSummaries,
+      masterSports,
+      venues,
 
       setSports: (sports) => dispatch({ type: "SET_SPORTS", sports }),
       updateSportPlanning: (sportId, patch) => dispatch({ type: "UPDATE_SPORT_PLANNING", sportId, patch }),
+      ensureDraftRegistration,
+      openRegistration,
+      deleteRegistration: async (registrationId) => {
+        if (ENV.USE_MOCK || !token) return
+        await Repos.registration.deleteRegistration(registrationId)
+        if (activeRegistrationId === registrationId) {
+          setActiveRegistrationId(null)
+          dispatch({ type: "LOAD", payload: initialState })
+        }
+        await refreshRegistrationList()
+      },
+      refreshRegistrationList,
+      refreshRemoteRegistration,
 
       setPaymentProof: (fileId, fileName, mimeType) =>
         dispatch({ type: "SET_PAYMENT_PROOF", fileId, fileName, mimeType }),
@@ -513,6 +664,35 @@ export function RegistrationProvider({ children }: { children: React.ReactNode }
       },
       updateAthlete: (athlete) => dispatch({ type: "UPDATE_ATHLETE", athlete }),
       removeAthlete: (athleteId) => dispatch({ type: "REMOVE_ATHLETE", athleteId }),
+      syncAthleteBatch: async (athletes) => {
+        const registrationId = await ensureDraftRegistration()
+        if (!registrationId) throw new Error("Draft registrasi belum tersedia.")
+        if (athletes.length === 0) return
+
+        for (const athlete of athletes) {
+          await Repos.registration.createAthlete({
+            registration_id: registrationId,
+            team_id: athlete.teamId ?? undefined,
+            sport_id: athlete.sportId,
+            category_id: athlete.categoryId,
+            name: athlete.name,
+            gender: athlete.gender,
+            birth_date: athlete.birthDate,
+            institution: athlete.institution,
+          })
+        }
+
+        await refreshRemoteRegistration(registrationId)
+      },
+      deleteAthleteRemote: async (athleteId) => {
+        if (!activeRegistrationId || ENV.USE_MOCK || !token) {
+          dispatch({ type: "REMOVE_ATHLETE", athleteId })
+          return
+        }
+
+        await Repos.registration.deleteAthlete(athleteId)
+        await refreshRemoteRegistration(activeRegistrationId)
+      },
 
       addOfficial: (official) => {
         const id = uid("off")
@@ -523,8 +703,50 @@ export function RegistrationProvider({ children }: { children: React.ReactNode }
 
       upsertDocFile: (athleteId, docKey, fileId, fileName, mimeType) =>
         dispatch({ type: "UPSERT_DOC_FILE", athleteId, docKey, fileId, fileName, mimeType }),
+      uploadDocument: async (athleteId, docKey, file) => {
+        const registrationId = await ensureDraftRegistration()
+        if (!registrationId) throw new Error("Registrasi draft belum tersedia.")
+        if (!file) throw new Error("File dokumen tidak ditemukan.")
+
+        await Repos.registration.uploadRegistrationDocument({
+          registrationId,
+          athleteId,
+          type: mapDocKeyToDocumentType(docKey),
+          file,
+        })
+        await refreshRemoteRegistration(registrationId)
+      },
+      submitRegistration: async () => {
+        const registrationId = await ensureDraftRegistration()
+        if (!registrationId) return { ok: false, message: "Draft registrasi belum tersedia." }
+
+        const result = await Repos.registration.submitRegistration(registrationId)
+        await refreshRegistrationList()
+        return {
+          ok: true,
+          message:
+            (typeof result === "object" && result !== null && "message" in result && typeof result.message === "string"
+              ? result.message
+              : null) ?? "Registrasi berhasil dikirim.",
+        }
+      },
     }
-  }, [state, storageKey, hydrateReady])
+  }, [
+    activeRegistrationId,
+    dispatch,
+    ensureDraftRegistration,
+    hydrateReady,
+    masterSports,
+    openRegistration,
+    refreshRegistrationList,
+    refreshRemoteRegistration,
+    registrationSummaries,
+    remoteReady,
+    state,
+    storageKey,
+    token,
+    venues,
+  ])
 
   return <RegistrationContext.Provider value={value}>{children}</RegistrationContext.Provider>
 }

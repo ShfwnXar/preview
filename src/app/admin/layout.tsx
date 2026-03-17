@@ -67,8 +67,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Button
                 variant="danger"
                 className="w-full"
-                onClick={() => {
-                  logout()
+                onClick={async () => {
+                  await logout()
                   router.replace("/login")
                 }}
               >

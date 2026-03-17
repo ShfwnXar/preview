@@ -1,7 +1,9 @@
 "use client"
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react"
+import React, { createContext, useContext, useEffect, useState } from "react"
 import { DEFAULT_ADMIN_CABOR_ACCOUNTS } from "@/data/defaultAdminCabor"
+import { Repos } from "@/repositories"
+import { clearAuthSession, readAuthSession, writeAuthSession } from "@/lib/authSession"
 
 export type Role = "PESERTA" | "ADMIN" | "ADMIN_CABOR" | "SUPER_ADMIN"
 
@@ -58,7 +60,6 @@ type LoginInput = {
 }
 
 const LS_USERS_KEY = "mg26_users"
-const LS_SESSION_KEY = "mg26_session"
 const LS_RESET_TOKENS_KEY = "mg26_reset_tokens"
 
 type ResetToken = {
@@ -72,12 +73,13 @@ type ResetToken = {
 
 type AuthContextValue = {
   user: User | null
+  token: string | null
   isAuthenticated: boolean
-  register: (input: RegisterInput) => { ok: boolean; message: string }
+  register: (input: RegisterInput) => Promise<{ ok: boolean; message: string }>
   requestEmailVerification: (email: string) => { ok: boolean; message: string; code?: string }
   verifyEmail: (input: { email: string; code: string }) => { ok: boolean; message: string }
-  login: (input: LoginInput) => { ok: boolean; message: string }
-  logout: () => void
+  login: (input: LoginInput) => Promise<{ ok: boolean; message: string }>
+  logout: () => Promise<void>
   generateResetToken: (email: string) => { ok: boolean; message: string; token?: string }
   resetPasswordWithToken: (input: {
     email: string
@@ -139,18 +141,28 @@ function isValidEmail(email: string) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<User | null>(() => {
+    const session = readAuthSession()
+    if (!session?.userId) return null
 
-  useEffect(() => {
-    const session = safeParse<{ userId: string } | null>(localStorage.getItem(LS_SESSION_KEY), null)
-    if (!session?.userId) return
+    if (session.user) {
+      return session.user
+    }
 
     const users = safeParse<StoredUser[]>(localStorage.getItem(LS_USERS_KEY), [])
     const found = users.find((u) => u.id === session.userId)
-    if (!found) return
+    if (!found) return null
 
     const { password: _pw, ...publicUser } = found
-    setUser(publicUser)
+    void _pw
+    return publicUser
+  })
+  const [token, setToken] = useState<string | null>(() => readAuthSession()?.token ?? null)
+
+  useEffect(() => {
+    const session = readAuthSession()
+    if (!session) return
+    writeAuthSession(session)
   }, [])
 
   const getAllUsers = () => {
@@ -213,7 +225,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAllUsers([...missingDefaults, ...users])
 
   }
-  const register = (input: RegisterInput) => {
+  const register = async (input: RegisterInput) => {
     if (!input.institutionName.trim()) return { ok: false, message: "Nama instansi wajib diisi." }
     if (!input.picName.trim()) return { ok: false, message: "Nama PIC wajib diisi." }
     if (!isValidEmail(input.email)) return { ok: false, message: "Format email tidak valid." }
@@ -332,7 +344,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { ok: true, message: "Email berhasil diverifikasi. Silakan login." }
   }
 
-  const login = (input: LoginInput) => {
+  const login = async (input: LoginInput) => {
     const email = normalizeEmail(input.email)
     const password = input.password
 
@@ -342,26 +354,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const users = getAllUsers()
     const found = users.find((u) => normalizeEmail(u.email) === email)
 
-    if (!found) return { ok: false, message: "Akun tidak ditemukan." }
-    if (found.role === "PESERTA" && !found.emailVerifiedAt) {
+    if (found && found.role === "PESERTA" && !found.emailVerifiedAt) {
       return {
         ok: false,
         message: "Email belum diverifikasi. Buka menu Verifikasi Email terlebih dahulu.",
       }
     }
-    if (found.password !== password) return { ok: false, message: "Password salah." }
+    if (found && found.email.endsWith("@mg.local") && found.password !== password) {
+      return { ok: false, message: "Password salah." }
+    }
 
-    localStorage.setItem(LS_SESSION_KEY, JSON.stringify({ userId: found.id }))
+    const result = await Repos.auth.login({ email, password })
+    if (!result.ok || !result.data) return { ok: false, message: result.message }
 
-    const { password: _pw, ...publicUser } = found
-    setUser(publicUser)
+    writeAuthSession({
+      userId: result.data.user.id,
+      token: result.data.accessToken,
+      user: result.data.user,
+    })
 
-    return { ok: true, message: "Login berhasil." }
+    setUser(result.data.user)
+    setToken(result.data.accessToken)
+    return { ok: true, message: result.message || "Login berhasil." }
   }
 
-  const logout = () => {
-    localStorage.removeItem(LS_SESSION_KEY)
+  const logout = async () => {
+    await Repos.auth.logout()
+    clearAuthSession()
     setUser(null)
+    setToken(null)
   }
 
   const generateResetToken = (emailInput: string) => {
@@ -447,23 +468,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return false
   }
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      user,
-      isAuthenticated: !!user,
-      register,
-      requestEmailVerification,
-      verifyEmail,
-      login,
-      logout,
-      generateResetToken,
-      resetPasswordWithToken,
-      getAllUsers,
-      seedDefaultAdminsIfEmpty,
-      canAccessSport,
-    }),
-    [user]
-  )
+  const value: AuthContextValue = {
+    user,
+    token,
+    isAuthenticated: !!user,
+    register,
+    requestEmailVerification,
+    verifyEmail,
+    login,
+    logout,
+    generateResetToken,
+    resetPasswordWithToken,
+    getAllUsers,
+    seedDefaultAdminsIfEmpty,
+    canAccessSport,
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

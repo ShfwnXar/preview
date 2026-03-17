@@ -46,7 +46,7 @@ function getStepNote(stepStatus: ReturnType<typeof getRegistrationStepStatus>, o
 function Stepper() {
   const pathname = usePathname()
   const { user } = useAuth()
-  const { state, hydrateReady } = useRegistration()
+  const { state, hydrateReady, ensureDraftRegistration, activeRegistrationId } = useRegistration()
   const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const { settings, isReady } = useRegistrationSettings()
 
@@ -70,7 +70,7 @@ function Stepper() {
   const step3Status = getRegistrationStepStatus(getRegistrationStepSetting("step3", settings))
   const step4Status = getRegistrationStepStatus(getRegistrationStepSetting("step4", settings))
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaveMessage(null)
     if (!user) {
       setSaveMessage({ type: "error", text: "Sesi user tidak ditemukan. Silakan login ulang." })
@@ -78,8 +78,16 @@ function Stepper() {
     }
 
     try {
+      const hadDraft = !!activeRegistrationId
+      let draftId = activeRegistrationId
+      if (state.sports.length > 0) {
+        draftId = await ensureDraftRegistration(state.sports.map((sport) => sport.id))
+      }
       localStorage.setItem(`mg26_registration_${user.id}`, JSON.stringify(state))
-      setSaveMessage({ type: "success", text: "Draft pendaftaran berhasil disimpan." })
+      setSaveMessage({
+        type: "success",
+        text: draftId && hadDraft ? "Draft pendaftaran berhasil disimpan." : "Draft pendaftaran berhasil dibuat dan disimpan.",
+      })
     } catch {
       setSaveMessage({ type: "error", text: "Gagal menyimpan draft pendaftaran." })
     }

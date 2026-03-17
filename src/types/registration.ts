@@ -54,11 +54,7 @@ export type Athlete = {
 // DOKUMEN ATLET (STEP 4)
 // =============================
 
-export type DocumentStatus =
-  | "EMPTY"
-  | "UPLOADED"
-  | "APPROVED"
-  | "REJECTED"
+export type DocumentStatus = string
 
 export type DocumentItem = {
   fileId?: string

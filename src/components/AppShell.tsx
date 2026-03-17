@@ -66,8 +66,8 @@ export default function AppShell({
     })
   }, [user])
 
-  const onLogout = () => {
-    logout()
+  const onLogout = async () => {
+    await logout()
     router.push("/login")
   }
 

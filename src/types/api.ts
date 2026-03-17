@@ -2,6 +2,12 @@ import type { Role, InstitutionType, User } from "@/context/AuthContext"
 import type { RegistrationState, PaymentStatus, DocumentStatus } from "@/context/RegistrationContext"
 import type { RegistrationSettings } from "@/lib/registrationSettings"
 
+export type ApiEnvelope<T> = {
+  success?: boolean
+  message?: string
+  data: T
+}
+
 /** ===== Auth DTO ===== */
 export type LoginRequest = { email: string; password: string }
 export type LoginResponse = { accessToken: string; user: User }
@@ -30,7 +36,131 @@ export type CreateAdminRequest = {
   institutionName?: string
 }
 
-/** ===== Registration DTO ===== */
+/** ===== Backend Registration DTO ===== */
+export type BackendSport = {
+  id: string | number
+  name?: string
+  title?: string
+  description?: string
+  categories?: Array<{
+    id: string | number
+    name?: string
+    title?: string
+    quota?: number
+  }>
+}
+
+export type BackendVenue = {
+  id: string | number
+  name?: string
+  title?: string
+  address?: string
+}
+
+export type BackendContingent = {
+  id?: string | number
+  name?: string
+  institution_name?: string
+  pic_name?: string
+  email?: string
+  phone?: string
+}
+
+export type BackendRegistrationSummary = {
+  id: string | number
+  status?: string
+  submission_status?: string
+  title?: string
+  name?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export type BackendTeam = {
+  id: string | number
+  registration_id?: string | number
+  sport_id?: string | number
+  category_id?: string | number
+  name?: string
+  title?: string
+  status?: string
+}
+
+export type BackendAthlete = {
+  id: string | number
+  registration_id?: string | number
+  team_id?: string | number | null
+  sport_id?: string | number
+  category_id?: string | number
+  name?: string
+  full_name?: string
+  gender?: string
+  birth_date?: string
+  institution?: string
+  school_name?: string
+}
+
+export type BackendDocument = {
+  id: string | number
+  athlete_id?: string | number | null
+  registration_id?: string | number
+  type?: string
+  document_type?: string
+  file_name?: string
+  status?: string
+  uploaded_at?: string
+  created_at?: string
+  note?: string
+}
+
+export type BackendRegistrationDetail = {
+  id: string | number
+  status?: string
+  submission_status?: string
+  title?: string
+  name?: string
+  venue_id?: string | number | null
+  venue?: BackendVenue | null
+  sports?: BackendSport[]
+  sport_ids?: Array<string | number>
+  teams?: BackendTeam[]
+  athletes?: BackendAthlete[]
+  documents?: BackendDocument[]
+  created_at?: string
+  updated_at?: string
+}
+
+export type CreateRegistrationRequest = {
+  venue_id?: string | number | null
+  sport_ids: string[]
+}
+
+export type UpsertTeamRequest = {
+  registration_id: string
+  sport_id?: string
+  category_id?: string
+  name: string
+}
+
+export type UpsertAthleteRequest = {
+  registration_id: string
+  team_id?: string | null
+  sport_id: string
+  category_id: string
+  name: string
+  gender: string
+  birth_date: string
+  institution?: string
+}
+
+export type UploadRegistrationDocumentRequest = {
+  registrationId: string
+  athleteId?: string
+  type: string
+  file: File
+}
+
+/** ===== Legacy local DTO ===== */
 export type GetRegistrationResponse = RegistrationState
 export type SaveRegistrationRequest = RegistrationState
 

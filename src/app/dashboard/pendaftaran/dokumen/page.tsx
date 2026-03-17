@@ -2,6 +2,8 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { ENV } from "@/config/env"
+import { Modal } from "@/components/ui/Modal"
 import { useRegistration } from "@/context/RegistrationContext"
 import { SPORTS_CATALOG } from "@/data/sportsCatalog"
 import { putFileBlob } from "@/lib/fileStore"
@@ -58,16 +60,46 @@ function getCategoryMeta(sportId?: string, categoryId?: string) {
 }
 
 function isDocReady(status?: string) {
-  return status === "UPLOADED" || status === "APPROVED"
+  const value = (status || "").toLowerCase()
+  return value === "uploaded" || value === "approved" || value === "pending"
+}
+
+function getDocStatusMeta(status?: string) {
+  const raw = status || "EMPTY"
+  const value = raw.toLowerCase()
+  if (value === "approved") {
+    return { label: raw, badgeClass: "bg-green-50 border-green-200 text-green-800" }
+  }
+  if (value === "uploaded" || value === "pending") {
+    return { label: raw, badgeClass: "bg-yellow-50 border-yellow-200 text-yellow-800" }
+  }
+  if (value === "empty") {
+    return { label: raw, badgeClass: "bg-gray-100 border-gray-200 text-gray-700" }
+  }
+  return { label: raw, badgeClass: "bg-red-50 border-red-200 text-red-800" }
+}
+
+function areAllAthleteDocsComplete(
+  documents: Array<
+    {
+      athleteId: string
+    } & Record<DocKey, { status?: string }>
+  >
+) {
+  if (documents.length === 0) return false
+
+  return documents.every((doc) => DOCS.every((item) => isDocReady(doc[item.key]?.status)))
 }
 
 export default function Step4DokumenPage() {
-  const { state, hydrateReady, upsertDocFile } = useRegistration()
+  const { state, hydrateReady, upsertDocFile, uploadDocument } = useRegistration()
   const paymentApproved = state.payment.status === "APPROVED"
 
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>("")
   const [loadingKey, setLoadingKey] = useState<DocKey | null>(null)
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [showCompletionModal, setShowCompletionModal] = useState(false)
+  const [completionNotified, setCompletionNotified] = useState(false)
 
   const [pendingFiles, setPendingFiles] = useState<Partial<Record<DocKey, File>>>({})
   const athletes = state.athletes
@@ -96,6 +128,14 @@ export default function Step4DokumenPage() {
     }
     return m
   }, [athletes, state.documents])
+
+  useEffect(() => {
+    if (completionNotified) return
+    if (areAllAthleteDocsComplete(state.documents as Array<{ athleteId: string } & Record<DocKey, { status?: string }>>)) {
+      setShowCompletionModal(true)
+      setCompletionNotified(true)
+    }
+  }, [completionNotified, state.documents])
 
   const currentRosterAthletes = useMemo(() => {
     if (!selectedAthlete) return []
@@ -157,17 +197,37 @@ export default function Step4DokumenPage() {
     setMsg(null)
     setLoadingKey(docKey)
     try {
-      const fileId = `doc_${selectedAthleteId}_${docKey}_${Date.now()}_${Math.random().toString(16).slice(2)}`
-      await putFileBlob(fileId, file)
-      upsertDocFile(
-        selectedAthleteId,
-        docKey,
-        fileId,
-        file.name,
-        file.type || "application/octet-stream"
-      )
+      if (ENV.USE_MOCK) {
+        const nextDocuments = state.documents.map((doc) =>
+          doc.athleteId === selectedAthleteId
+            ? {
+                ...doc,
+                [docKey]: {
+                  ...doc[docKey],
+                  status: "UPLOADED",
+                },
+              }
+            : doc
+        )
+
+        const fileId = `doc_${selectedAthleteId}_${docKey}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+        await putFileBlob(fileId, file)
+        upsertDocFile(
+          selectedAthleteId,
+          docKey,
+          fileId,
+          file.name,
+          file.type || "application/octet-stream"
+        )
+        if (areAllAthleteDocsComplete(nextDocuments)) {
+          setShowCompletionModal(true)
+          setCompletionNotified(true)
+        }
+      } else {
+        await uploadDocument(selectedAthleteId, docKey, file)
+      }
       setPendingFiles((prev) => ({ ...prev, [docKey]: undefined }))
-      setMsg({ type: "success", text: "Dokumen berhasil dicatat (status: UPLOADED)." })
+      setMsg({ type: "success", text: "Dokumen berhasil dikirim dan status diperbarui." })
     } catch (e: unknown) {
       setMsg({ type: "error", text: e instanceof Error ? e.message : "Gagal upload dokumen." })
     } finally {
@@ -188,6 +248,17 @@ export default function Step4DokumenPage() {
 
   return (
     <div className="max-w-6xl space-y-6">
+      <Modal
+        open={showCompletionModal}
+        onClose={() => setShowCompletionModal(false)}
+        title="Dokumen Berhasil Dilengkapi"
+        className="max-w-lg"
+      >
+        <p className="text-sm text-gray-700">
+          Silahkan Menunggu Admin Untuk Mengundang Anda ke Grup WA
+        </p>
+      </Modal>
+
       {/* Header */}
       <div className="bg-white border rounded-xl p-6 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
@@ -358,14 +429,7 @@ export default function Step4DokumenPage() {
                 const uploadedAt = file?.uploadedAt
 
                 const selectedFile = pendingFiles[d.key]
-                const badgeClass =
-                  status === "EMPTY"
-                    ? "bg-gray-100 border-gray-200 text-gray-700"
-                    : status === "UPLOADED"
-                    ? "bg-yellow-50 border-yellow-200 text-yellow-800"
-                    : status === "APPROVED"
-                    ? "bg-green-50 border-green-200 text-green-800"
-                    : "bg-red-50 border-red-200 text-red-800"
+                const statusMeta = getDocStatusMeta(status)
 
                 return (
                   <div key={d.key} className="rounded-2xl border border-gray-200 bg-gradient-to-b from-white to-gray-50/60 p-4 md:p-5">
@@ -376,9 +440,9 @@ export default function Step4DokumenPage() {
 
                         <div className="mt-3 flex flex-wrap gap-2 items-center">
                           <span
-                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold border ${badgeClass}`}
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold border ${statusMeta.badgeClass}`}
                           >
-                            {status}
+                            {statusMeta.label}
                           </span>
                           <span className="text-xs text-gray-500">
                             File: <b>{fileName ?? "-"}</b>
