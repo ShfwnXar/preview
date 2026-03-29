@@ -1,15 +1,26 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import { useAuth } from "@/context/AuthContext"
-import { useEffect, useMemo, useState } from "react"
-import { getFileBlob } from "@/lib/fileStore"
+import {
+  DOCUMENT_STATUS_OPTIONS,
+  DOCUMENT_FIELD_KEYS,
+  getDocumentCatalogForParticipant,
+  getParticipantDocumentCategory,
+  type DocumentKey,
+  type DocumentStatus,
+  type ParticipantDocumentCategory,
+} from "@/data/documentCatalog"
+import { downloadFileBlob, getFileBlob } from "@/lib/fileStore"
 import { Repos } from "@/repositories"
-import type { AthleteDocuments, DocumentStatus, Registration, Athlete } from "@/types/registration"
+import type { Athlete, AthleteDocuments, Registration } from "@/types/registration"
 
-type DocKey = keyof Omit<AthleteDocuments, "athleteId">
-type ReviewStatus = Exclude<DocumentStatus, "EMPTY" | "UPLOADED">
-type DocFilter = "ALL" | "ACC" | "BELUM_ACC"
-type KontingenFilter = "ALL" | "SUDAH_APPROVE" | "BELUM_APPROVE" | "SUDAH_SUBMIT" | "BELUM_SUBMIT"
+type StoredUserLite = {
+  id: string
+  institutionName: string
+  email: string
+  institutionType?: string
+}
 
 function safeParse<T>(value: string | null, fallback: T): T {
   try {
@@ -20,505 +31,245 @@ function safeParse<T>(value: string | null, fallback: T): T {
   }
 }
 
-function docLabel(key: DocKey) {
-  switch (key) {
-    case "dapodik":
-      return "1) Bukti terdaftar di Dapodik / PD-Dikti"
-    case "ktp":
-      return "2) KTP / KIA"
-    case "kartu":
-      return "3) Kartu Pelajar / KTM"
-    case "raport":
-      return "4) Raport / KHS"
-    case "foto":
-      return "5) Pas foto"
-    default:
-      return key
+function formatDateTime(value?: string) {
+  if (!value) return "-"
+  try {
+    return new Date(value).toLocaleString("id-ID")
+  } catch {
+    return value
   }
 }
 
-function badge(status: DocumentStatus, note?: string) {
-  const base = "inline-flex items-center px-2 py-1 rounded-full text-xs font-extrabold border"
-  if (status === "EMPTY") return <span className={`${base} bg-gray-50 border-gray-200 text-gray-600`}>EMPTY</span>
-  if (status === "UPLOADED") return <span className={`${base} bg-yellow-50 border-yellow-200 text-yellow-800`}>UPLOADED</span>
-  if (status === "APPROVED") return <span className={`${base} bg-green-50 border-green-200 text-green-800`}>APPROVED</span>
-  return <span className={`${base} bg-red-50 border-red-200 text-red-700`}>REJECTED</span>
+function statusBadge(status?: string) {
+  if (status === "Disetujui") return "border-green-200 bg-green-50 text-green-800"
+  if (status === "Sudah upload") return "border-yellow-200 bg-yellow-50 text-yellow-800"
+  if (status === "Perlu revisi") return "border-amber-200 bg-amber-50 text-amber-800"
+  if (status === "Ditolak") return "border-red-200 bg-red-50 text-red-800"
+  return "border-gray-200 bg-gray-100 text-gray-700"
 }
 
-
 function isImageMime(mime?: string) {
-  if (!mime) return false
-  return mime.startsWith("image/")
+  return !!mime && mime.startsWith("image/")
 }
 
 function isPdfMime(mime?: string) {
-  if (!mime) return false
-  return mime === "application/pdf" || mime.includes("pdf")
-}
-
-const DOC_KEYS: DocKey[] = ["dapodik", "ktp", "kartu", "raport", "foto"]
-
-function getAthleteDocStatusSummary(registration: Registration | null, athleteId: string): "ACC" | "BELUM_ACC" {
-  if (!registration) return "BELUM_ACC"
-  const doc = registration.documents.find((d) => d.athleteId === athleteId)
-  if (!doc) return "BELUM_ACC"
-  for (const key of DOC_KEYS) {
-    const status = doc[key]?.status as DocumentStatus | undefined
-    if (status !== "APPROVED") return "BELUM_ACC"
-  }
-  return "ACC"
-}
-
-function summarizeKontingenDocs(reg: Registration, athletes: Athlete[]) {
-  let totalDocs = 0
-  let approvedDocs = 0
-  let submittedDocs = 0
-
-  for (const athlete of athletes) {
-    const doc = reg.documents.find((d) => d.athleteId === athlete.id)
-    if (!doc) continue
-
-    for (const key of DOC_KEYS) {
-      totalDocs += 1
-      const status = doc[key]?.status ?? "EMPTY"
-      if (status === "APPROVED") approvedDocs += 1
-      if (status !== "EMPTY") submittedDocs += 1
-    }
-  }
-
-  return {
-    totalDocs,
-    approvedDocs,
-    submittedDocs,
-    isAllApproved: totalDocs > 0 && approvedDocs === totalDocs,
-    isAnySubmitted: submittedDocs > 0,
-  }
+  return !!mime && (mime === "application/pdf" || mime.includes("pdf"))
 }
 
 export default function AdminDokumenPage() {
   const { getAllUsers, user: adminUser, canAccessSport } = useAuth()
 
-  const [targetUserId, setTargetUserId] = useState<string>("")
-  const [registration, setRegistration] = useState<Registration | null>(null)
-  const [selectedAthleteId, setSelectedAthleteId] = useState<string>("")
-  const [docFilter, setDocFilter] = useState<DocFilter>("ALL")
-  const [kontingenFilter, setKontingenFilter] = useState<KontingenFilter>("ALL")
-  const [kontingenQuery, setKontingenQuery] = useState("")
-  const [preview, setPreview] = useState<{
-    open: boolean
-    loading: boolean
-    error: string | null
-    title: string
-    fileName: string
-    url: string
-    mime?: string
-  }>({ open: false, loading: false, error: null, title: "", fileName: "", url: "", mime: "" })
-  const pesertaUsersAll = useMemo(() => {
-    return getAllUsers().filter((u) => u.role === "PESERTA")
-  }, [getAllUsers])
+  const [targetUserId, setTargetUserId] = useState("")
+  const [selectedAthleteId, setSelectedAthleteId] = useState("")
+  const [, setRevision] = useState(0)
+  const [participantFilter, setParticipantFilter] = useState<"ALL" | ParticipantDocumentCategory>("ALL")
+  const [statusFilter, setStatusFilter] = useState<"ALL" | DocumentStatus>("ALL")
+  const [query, setQuery] = useState("")
+  const [preview, setPreview] = useState<{ open: boolean; title: string; url: string; mime?: string; error?: string }>({
+    open: false,
+    title: "",
+    url: "",
+  })
 
-  const pesertaWithReg = useMemo(() => {
-    return pesertaUsersAll
-      .map((u) => {
-        const reg = safeParse<Registration | null>(localStorage.getItem(`mg26_registration_${u.id}`), null)
-        return { u, reg }
-      })
-      .filter((x) => !!x.reg)
-  }, [pesertaUsersAll])
-
-  const visibleKontingen = useMemo(() => {
-    if (!adminUser) return []
-
-    if (adminUser.role === "ADMIN" || adminUser.role === "SUPER_ADMIN") return pesertaWithReg
-
-    if (adminUser.role === "ADMIN_CABOR") {
-      return pesertaWithReg.filter(({ reg }) => {
-        const sportIds = reg!.sports.map((s) => s.id)
-        return sportIds.some((sid) => canAccessSport(sid))
-      })
-    }
-
-    return []
-  }, [adminUser, pesertaWithReg, canAccessSport])
-
-  const filteredKontingen = useMemo(() => {
-    const q = kontingenQuery.trim().toLowerCase()
-
-    return visibleKontingen.filter(({ u, reg }) => {
-      const scopedAthletes =
-        adminUser?.role === "ADMIN_CABOR" ? reg!.athletes.filter((a) => canAccessSport(a.sportId)) : reg!.athletes
-      const summary = summarizeKontingenDocs(reg!, scopedAthletes)
-
-      const matchFilter =
-        kontingenFilter === "ALL"
-          ? true
-          : kontingenFilter === "SUDAH_APPROVE"
-          ? summary.isAllApproved
-          : kontingenFilter === "BELUM_APPROVE"
-          ? !summary.isAllApproved
-          : kontingenFilter === "SUDAH_SUBMIT"
-          ? summary.isAnySubmitted
-          : !summary.isAnySubmitted
-
-      if (!matchFilter) return false
-      if (!q) return true
-
-      const haystack = [u.institutionName, u.email, reg!.sports.map((s) => s.name).join(" ")].join(" ").toLowerCase()
-      return haystack.includes(q)
+  const participantUsers = useMemo(() => {
+    return (getAllUsers() as StoredUserLite[]).filter((user) => {
+      if ((user as { role?: string }).role !== "PESERTA") return false
+      const registration = safeParse<Registration | null>(localStorage.getItem(`mg26_registration_${user.id}`), null)
+      if (!registration) return false
+      if (!adminUser) return false
+      if (adminUser.role === "ADMIN" || adminUser.role === "SUPER_ADMIN") return true
+      if (adminUser.role === "ADMIN_CABOR") return registration.athletes.some((athlete) => canAccessSport(athlete.sportId))
+      return false
     })
-  }, [visibleKontingen, adminUser, canAccessSport, kontingenFilter, kontingenQuery])
+  }, [adminUser, canAccessSport, getAllUsers])
 
-  useEffect(() => {
-    if (filteredKontingen.length > 0 && !targetUserId) {
-      setTargetUserId(filteredKontingen[0].u.id)
-    }
-    if (filteredKontingen.length === 0) {
-      setTargetUserId("")
-      setRegistration(null)
-      setSelectedAthleteId("")
-    }
-  }, [filteredKontingen, targetUserId])
+  const filteredUsers = useMemo(() => {
+    const loweredQuery = query.trim().toLowerCase()
+    return participantUsers.filter((user) => {
+      const participantCategory = getParticipantDocumentCategory(user.institutionType)
+      if (participantFilter !== "ALL" && participantCategory !== participantFilter) return false
+      if (!loweredQuery) return true
+      return [user.institutionName, user.email, participantCategory].join(" ").toLowerCase().includes(loweredQuery)
+    })
+  }, [participantFilter, participantUsers, query])
 
-  useEffect(() => {
-    let active = true
+  const activeUser = filteredUsers.find((user) => user.id === targetUserId) ?? filteredUsers[0] ?? null
+  const registration = activeUser
+    ? safeParse<Registration | null>(localStorage.getItem(`mg26_registration_${activeUser.id}`), null)
+    : null
+  const participantCategory = getParticipantDocumentCategory(activeUser?.institutionType)
+  const documentCatalog = getDocumentCatalogForParticipant(activeUser?.institutionType)
 
-    const loadRegistration = async () => {
-      if (!targetUserId) return
-      const reg = (await Repos.registration.getRegistrationByUserId(targetUserId)) as unknown as Registration | null
-      if (!active) return
-      setRegistration(reg)
-
-      if (reg?.athletes?.length) setSelectedAthleteId(reg.athletes[0].id)
-      else setSelectedAthleteId("")
-    }
-
-    void loadRegistration()
-    return () => {
-      active = false
-    }
-  }, [targetUserId])
   const visibleAthletes = useMemo(() => {
-    if (!registration || !adminUser) return []
-    if (adminUser.role === "ADMIN" || adminUser.role === "SUPER_ADMIN") return registration.athletes
+    if (!registration) return []
+    const base = adminUser?.role === "ADMIN_CABOR" ? registration.athletes.filter((athlete) => canAccessSport(athlete.sportId)) : registration.athletes
+    if (statusFilter === "ALL") return base
+    return base.filter((athlete) => {
+      const docs = registration.documents.find((item) => item.athleteId === athlete.id)
+      return documentCatalog.some((item) => (docs?.[item.key]?.status ?? "Belum upload") === statusFilter)
+    })
+  }, [adminUser?.role, canAccessSport, documentCatalog, registration, statusFilter])
 
-    if (adminUser.role === "ADMIN_CABOR") {
-      return registration.athletes.filter((a) => canAccessSport(a.sportId))
-    }
+  const selectedAthlete = visibleAthletes.find((athlete) => athlete.id === selectedAthleteId) ?? visibleAthletes[0] ?? null
+  const selectedDocs = registration?.documents.find((item) => item.athleteId === selectedAthlete?.id) ?? null
 
-    return []
-  }, [registration, adminUser, canAccessSport])
-
-  const filteredVisibleAthletes = useMemo(() => {
-    if (docFilter === "ALL") return visibleAthletes
-    return visibleAthletes.filter((athlete) => getAthleteDocStatusSummary(registration, athlete.id) === docFilter)
-  }, [visibleAthletes, registration, docFilter])
-
-  useEffect(() => {
-    if (filteredVisibleAthletes.length === 0) {
-      setSelectedAthleteId("")
+  const updateDoc = async (docKey: DocumentKey, status: Exclude<DocumentStatus, "Belum upload" | "Sudah upload">) => {
+    if (!registration || !activeUser || !selectedAthlete || !selectedDocs) return
+    const current = selectedDocs[docKey]
+    if (!current?.fileId) {
+      alert("Dokumen belum diunggah.")
       return
     }
 
-    const selectedStillVisible = filteredVisibleAthletes.some((athlete) => athlete.id === selectedAthleteId)
-    if (!selectedStillVisible) {
-      setSelectedAthleteId(filteredVisibleAthletes[0].id)
-    }
-  }, [filteredVisibleAthletes, selectedAthleteId])
-
-  const selectedAthlete: Athlete | null = useMemo(() => {
-    if (!selectedAthleteId) return null
-    return visibleAthletes.find((a) => a.id === selectedAthleteId) ?? null
-  }, [visibleAthletes, selectedAthleteId])
-
-  const selectedDocs = useMemo(() => {
-    if (!registration || !selectedAthlete) return null
-    return registration.documents.find((d) => d.athleteId === selectedAthlete.id) ?? null
-  }, [registration, selectedAthlete])
-
-  const openPreview = async (docKey: DocKey) => {
-    if (!selectedDocs) return
-    const item = selectedDocs[docKey] as any
-    const fileId = item?.fileId as string | undefined
-    const fileName = item?.fileName as string | undefined
-    const mime = item?.mimeType as string | undefined
-
-    if (!fileId) {
-      alert("File belum diupload.")
-      return
+    let note = current.note
+    if (status === "Perlu revisi" || status === "Ditolak") {
+      const input = window.prompt("Catatan validator wajib diisi:", current.note ?? "")
+      if (!input || !input.trim()) return
+      note = input.trim()
     }
 
-    if (preview.url) URL.revokeObjectURL(preview.url)
-    setPreview({ open: true, loading: true, error: null, title: docLabel(docKey), fileName: fileName ?? "", url: "", mime: mime ?? "" })
+    const validatedAt = new Date().toISOString()
+    const validatedBy = adminUser?.picName ?? adminUser?.email ?? "Validator"
 
-    try {
-      const blob = await getFileBlob(fileId)
-      if (!blob) {
-        setPreview((prev) => ({ ...prev, loading: false, error: "File tidak tersedia di browser ini (kemungkinan upload dilakukan di browser/perangkat lain atau storage sudah dibersihkan)." }))
-        return
-      }
-      const url = URL.createObjectURL(blob)
-      const finalMime = mime || blob.type || "application/octet-stream"
-      setPreview({ open: true, loading: false, error: null, title: docLabel(docKey), fileName: fileName ?? "", url, mime: finalMime })
-    } catch {
-      setPreview((prev) => ({ ...prev, loading: false, error: "Gagal membuka dokumen." }))
-    }
-  }
-
-
-  const closePreview = () => {
-    if (preview.url) URL.revokeObjectURL(preview.url)
-    setPreview({ open: false, loading: false, error: null, title: "", fileName: "", url: "", mime: "" })
-  }
-
-  const updateDoc = async (docKey: DocKey, status: ReviewStatus, note?: string) => {
-    if (!registration || !selectedAthleteId) return
-
-    const reg = registration
-    if (!reg) return
-
-    const athlete = reg.athletes.find((a) => a.id === selectedAthleteId)
-    if (!athlete) return
-    if (adminUser?.role === "ADMIN_CABOR" && !canAccessSport(athlete.sportId)) {
-      alert("Anda tidak memiliki akses untuk cabor ini.")
-      return
-    }
-
-    const storedNote = note?.trim() ? note.trim() : undefined
-
-    const updatedDocs = reg.documents.map((d) => {
-      if (d.athleteId !== selectedAthleteId) return d
+    const nextDocs = registration.documents.map((doc) => {
+      if (doc.athleteId !== selectedAthlete.id) return doc
       return {
-        ...d,
+        ...doc,
         [docKey]: {
-          ...d[docKey],
-          status, note: storedNote,
+          ...doc[docKey],
+          status,
+          note,
+          validatedAt,
+          validatedBy,
         },
       }
     })
 
-    const updated: Registration = {
-      ...reg,
-      documents: updatedDocs,
-      updatedAt: new Date().toISOString(),
-    }
+    const nextRegistration: Registration = { ...registration, documents: nextDocs, updatedAt: validatedAt }
+    localStorage.setItem(`mg26_registration_${activeUser.id}`, JSON.stringify(nextRegistration))
 
-    try {
-      await Repos.registration.adminUpdateDoc({
-        userId: targetUserId,
-        athleteId: selectedAthleteId,
-        docKey,
-        status, note: storedNote,
-      })
-      setRegistration(updated)
-    } catch {
-      alert("Gagal menyimpan validasi dokumen.")
-    }
+    await Repos.registration.adminUpdateDoc({
+      userId: activeUser.id,
+      athleteId: selectedAthlete.id,
+      docKey,
+      status,
+      note,
+      validatedBy,
+    }).catch(() => {})
+
+    setRevision((value) => value + 1)
   }
 
-  const docsCounters = useMemo(() => {
-    const acc: Record<DocumentStatus, number> = { APPROVED: 0, REJECTED: 0, UPLOADED: 0, EMPTY: 0 }
-    for (const a of visibleAthletes) {
-      const doc = registration?.documents.find((d) => d.athleteId === a.id)
-      if (!doc) continue
-      for (const key of DOC_KEYS) {
-        const st: DocumentStatus = doc[key]?.status ?? "EMPTY"
-        acc[st] += 1
-      }
+  const openPreview = async (docKey: DocumentKey) => {
+    const fileId = selectedDocs?.[docKey]?.fileId
+    if (!fileId) {
+      alert("Dokumen belum diunggah.")
+      return
     }
-    return acc
-  }, [visibleAthletes, registration])
+    const blob = await getFileBlob(fileId)
+    if (!blob) {
+      setPreview({ open: true, title: selectedDocs?.[docKey]?.fileName ?? "Dokumen", url: "", error: "File tidak tersedia di browser ini." })
+      return
+    }
+    const url = URL.createObjectURL(blob)
+    setPreview({ open: true, title: selectedDocs?.[docKey]?.fileName ?? "Dokumen", url, mime: selectedDocs?.[docKey]?.mimeType || blob.type })
+  }
+
+  const closePreview = () => {
+    if (preview.url) URL.revokeObjectURL(preview.url)
+    setPreview({ open: false, title: "", url: "" })
+  }
 
   return (
     <div className="max-w-7xl space-y-6">
-      <div className="bg-white border rounded-2xl p-6 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-          <div>
-
-            <h1 className="text-2xl font-extrabold text-gray-900">Validasi Dokumen Peserta</h1>
-            <p className="text-gray-600 mt-2">
-              Pantau progres upload, approval, dan revisi dokumen peserta dengan lebih cepat dari satu tampilan admin.
-            </p>
-            {adminUser?.role === "ADMIN_CABOR" && (
-              <div className="mt-2 text-xs text-gray-500">Mode Admin Cabor: hanya atlet sesuai cabor yang ditugaskan.</div>
-            )}
-          </div>
-        </div>
+      <div className="rounded-2xl border bg-white p-6 shadow-sm">
+        <h1 className="text-2xl font-extrabold text-gray-900">Validasi Dokumen Peserta</h1>
+        <p className="mt-2 text-gray-600">
+          Menu validasi menampilkan dokumen berdasarkan kategori <b>Pelajar</b> dan <b>Mahasiswa</b> dengan daftar yang identik dengan form upload.
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-xl border bg-white p-4"><div className="text-xs text-gray-500">Approved</div><div className="mt-1 text-2xl font-extrabold text-green-700">{docsCounters.APPROVED}</div></div>
-        <div className="rounded-xl border bg-white p-4"><div className="text-xs text-gray-500">Rejected</div><div className="mt-1 text-2xl font-extrabold text-red-700">{docsCounters.REJECTED}</div></div>
-        <div className="rounded-xl border bg-white p-4"><div className="text-xs text-gray-500">Uploaded</div><div className="mt-1 text-2xl font-extrabold text-yellow-700">{docsCounters.UPLOADED}</div></div>
-        <div className="rounded-xl border bg-white p-4"><div className="text-xs text-gray-500">Empty</div><div className="mt-1 text-2xl font-extrabold text-gray-700">{docsCounters.EMPTY}</div></div>
-      </div>
-
-      
-      <div className="bg-white border rounded-2xl p-6 shadow-sm space-y-3">
-        <div className="text-sm font-extrabold text-gray-900">Pilih Kontingen</div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <input
-            value={kontingenQuery}
-            onChange={(e) => setKontingenQuery(e.target.value)}
-            className="w-full border rounded-xl px-3 py-2"
-            placeholder="Cari nama kontingen / email / cabor"
-          />
-          <select
-            value={kontingenFilter}
-            onChange={(e) => setKontingenFilter(e.target.value as KontingenFilter)}
-            className="w-full border rounded-xl px-3 py-2"
-          >
-            <option value="ALL">Semua Kontingen</option>
-            <option value="SUDAH_APPROVE">Kontingen Sudah Approve</option>
-            <option value="BELUM_APPROVE">Kontingen Belum Approve</option>
-            <option value="SUDAH_SUBMIT">Kontingen Sudah Submit Dokumen</option>
-            <option value="BELUM_SUBMIT">Kontingen Belum Submit Dokumen</option>
+      <div className="rounded-2xl border bg-white p-6 shadow-sm space-y-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <input value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-xl border px-3 py-2" placeholder="Cari kontingen / email" />
+          <select value={participantFilter} onChange={(e) => setParticipantFilter(e.target.value as "ALL" | ParticipantDocumentCategory)} className="rounded-xl border px-3 py-2">
+            <option value="ALL">Semua kategori peserta</option>
+            <option value="Pelajar">Pelajar</option>
+            <option value="Mahasiswa">Mahasiswa</option>
+          </select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as "ALL" | DocumentStatus)} className="rounded-xl border px-3 py-2">
+            <option value="ALL">Semua status validasi</option>
+            {DOCUMENT_STATUS_OPTIONS.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
           </select>
         </div>
-        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600">Fokus cepat: Sudah Submit = sudah ada file diupload. Belum Submit = semua dokumen masih kosong. Belum Approve = masih ada dokumen uploaded atau rejected.</div>
-        {filteredKontingen.length === 0 ? (
-          <div className="text-sm text-gray-500">Tidak ada kontingen yang cocok dengan filter.</div>
-        ) : (
-          <select
-            value={targetUserId}
-            onChange={(e) => setTargetUserId(e.target.value)}
-            className="w-full border rounded-xl px-3 py-2"
-          >
-            {filteredKontingen.map(({ u, reg }) => {
-              const scopedAthletes = adminUser?.role === "ADMIN_CABOR" ? reg!.athletes.filter((a) => canAccessSport(a.sportId)) : reg!.athletes
-              const summary = summarizeKontingenDocs(reg!, scopedAthletes)
-              return (
-                <option key={u.id} value={u.id}>
-                  {u.institutionName} - {u.email} (submit {summary.submittedDocs}/{summary.totalDocs} | belum approve {summary.totalDocs - summary.approvedDocs})
-                </option>
-              )
-            })}
-          </select>
-        )}
+
+        <select value={activeUser?.id ?? ""} onChange={(e) => { setTargetUserId(e.target.value); setSelectedAthleteId("") }} className="w-full rounded-xl border px-3 py-2">
+          {filteredUsers.map((user) => (
+            <option key={user.id} value={user.id}>
+              {user.institutionName} | {getParticipantDocumentCategory(user.institutionType)} | {user.email}
+            </option>
+          ))}
+        </select>
       </div>
 
-      
-      {!registration ? (
-        <div className="bg-white border rounded-2xl p-6 shadow-sm text-sm text-gray-500">
-          Kontingen ini belum memulai pendaftaran / belum ada data registration.
-        </div>
-      ) : filteredVisibleAthletes.length === 0 ? (
-        <div className="bg-white border rounded-2xl p-6 shadow-sm text-sm text-gray-500">
-          Tidak ada atlet yang cocok dengan filter dokumen pada kontingen ini.
-        </div>
+      {!registration || !activeUser ? (
+        <div className="rounded-2xl border bg-white p-6 text-sm text-gray-500 shadow-sm">Belum ada kontingen yang cocok dengan filter.</div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
-          <div className="bg-white border rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between"><div><div className="text-lg font-extrabold text-gray-900">Data Atlet</div><div className="text-xs text-gray-500">Dropdown atlet menampilkan jumlah dokumen submit dan yang belum approve.</div></div><select value={docFilter} onChange={(e) => setDocFilter(e.target.value as DocFilter)} className="w-full border rounded-xl px-3 py-2 text-sm md:w-[240px]"><option value="ALL">Semua Dokumen</option><option value="ACC">Sudah ACC</option><option value="BELUM_ACC">Belum ACC</option></select></div>
-
-            <select
-              value={selectedAthleteId}
-              onChange={(e) => setSelectedAthleteId(e.target.value)}
-              className="w-full border rounded-xl px-3 py-2"
-            >
-              {filteredVisibleAthletes.map((a) => {
-                const athleteDoc = registration?.documents.find((d) => d.athleteId === a.id)
-                const submittedCount = DOC_KEYS.reduce((acc, key) => acc + ((athleteDoc?.[key]?.status ?? "EMPTY") !== "EMPTY" ? 1 : 0), 0)
-                const approvedCount = DOC_KEYS.reduce((acc, key) => acc + ((athleteDoc?.[key]?.status ?? "EMPTY") === "APPROVED" ? 1 : 0), 0)
-                return (
-                  <option key={a.id} value={a.id}>
-                    {a.name} | submit {submittedCount}/{DOC_KEYS.length} | belum approve {DOC_KEYS.length - approvedCount}
-                  </option>
-                )
-              })}
+        <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+          <div className="rounded-2xl border bg-white p-6 shadow-sm space-y-4">
+            <div className="text-lg font-extrabold text-gray-900">Daftar Atlet</div>
+            <div className="rounded-xl border bg-gray-50 p-4 text-sm text-gray-700">
+              <div><b>Kontingen:</b> {activeUser.institutionName}</div>
+              <div className="mt-1"><b>Kategori peserta:</b> {participantCategory}</div>
+            </div>
+            <select value={selectedAthlete?.id ?? ""} onChange={(e) => setSelectedAthleteId(e.target.value)} className="w-full rounded-xl border px-3 py-2">
+              {visibleAthletes.map((athlete) => (
+                <option key={athlete.id} value={athlete.id}>{athlete.name}</option>
+              ))}
             </select>
-
-            {!selectedAthlete ? (
-              <div className="text-sm text-gray-500">Atlet tidak ditemukan.</div>
-            ) : (
-              <div className="rounded-2xl border bg-gray-50 p-4 space-y-2">
-                <div className="text-sm">
-                  <b>Nama:</b> {selectedAthlete.name}
-                </div>
-                <div className="text-sm">
-                  <b>Gender:</b> {selectedAthlete.gender}
-                </div>
-                <div className="text-sm">
-                  <b>Tgl Lahir:</b> {selectedAthlete.birthDate || "-"}
-                </div>
-                <div className="text-sm">
-                  <b>Asal:</b> {selectedAthlete.institution || "-"}
-                </div>
-                <div className="text-sm">
-                  <b>Cabor:</b>{" "}
-                  {registration.sports.find((s) => s.id === selectedAthlete.sportId)?.name ?? selectedAthlete.sportId}
-                </div>
-                <div className="text-sm">
-                  <b>Kategori:</b>{" "}
-                  {registration.sports
-                    .find((s) => s.id === selectedAthlete.sportId)
-                    ?.categories?.find((c) => c.id === selectedAthlete.categoryId)?.name ?? selectedAthlete.categoryId}
-                </div>
-                <div className="text-xs text-gray-500 pt-2">Athlete ID: {selectedAthlete.id}</div>
-              </div>
-            )}
           </div>
 
-          
-          <div className="bg-white border rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="text-lg font-extrabold text-gray-900">Dokumen</div>
+          <div className="rounded-2xl border bg-white p-6 shadow-sm space-y-4">
+            <div className="flex flex-col gap-1">
+              <div className="text-lg font-extrabold text-gray-900">Menu Validasi Dokumen</div>
+              <div className="text-sm text-gray-600">Kategori {participantCategory}. Daftar dokumen berikut identik dengan form upload.</div>
+            </div>
 
-            {!selectedDocs ? (
-              <div className="text-sm text-gray-500">Belum ada dokumen untuk atlet ini.</div>
+            {!selectedAthlete || !selectedDocs ? (
+              <div className="text-sm text-gray-500">Atlet atau dokumen belum tersedia.</div>
             ) : (
-              <div className="space-y-3">
-                {DOC_KEYS.map((docKey) => {
-                  const d = selectedDocs[docKey]
-                  const fileId = (d as any)?.fileId
-                  const hasFile = typeof fileId === "string" && fileId.trim().length > 0
+              <div className="space-y-4">
+                {documentCatalog.map((item) => {
+                  const doc = selectedDocs[item.key]
+                  const hasFile = !!doc?.fileId
+                  const currentStatus = doc?.status ?? "Belum upload"
 
                   return (
-                    <div key={docKey} className="rounded-2xl border p-4">
-                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                        <div>
-                          <div className="font-extrabold text-gray-900">{docLabel(docKey)}</div>
-                          <div className="mt-2 flex items-center gap-2">
-                            {badge(d.status, d.note)}
-                            <span className="text-xs text-gray-500">{d.fileName ?? "-"}</span>
+                    <div key={item.key} className="rounded-2xl border border-gray-200 p-4">
+                      <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+                        <div className="space-y-2 text-sm text-gray-700">
+                          <div className="font-extrabold text-gray-900">{item.label}</div>
+                          <div><b>Kategori peserta:</b> {participantCategory}</div>
+                          <div>
+                            <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${statusBadge(currentStatus)}`}>{currentStatus}</span>
                           </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Upload: {d.uploadedAt ? new Date(d.uploadedAt).toLocaleString("id-ID") : "-"}
-                          </div>
+                          <div><b>Catatan validator:</b> {doc?.note ?? "-"}</div>
+                          <div><b>Tanggal upload:</b> {formatDateTime(doc?.uploadedAt)}</div>
+                          <div><b>Tanggal validasi:</b> {formatDateTime(doc?.validatedAt)}</div>
+                          <div><b>Validator:</b> {doc?.validatedBy ?? "-"}</div>
+                          <div><b>Nama file:</b> {doc?.fileName ?? "-"}</div>
                         </div>
 
-                        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:w-[430px]">
-                          <button
-                            type="button"
-                            onClick={() => openPreview(docKey)}
-                            disabled={!hasFile}
-                            className={`w-full px-3 py-2 rounded-xl font-extrabold border ${
-                              hasFile ? "bg-white hover:bg-gray-50" : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                            }`}
-                            title={!hasFile ? "Belum ada file" : "Buka dokumen"}
-                          >
-                            Buka Dokumen
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => updateDoc(docKey, "APPROVED")}
-                            className="w-full px-3 py-2 rounded-xl font-extrabold bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
-                            disabled={!hasFile}
-                          >
-                            Approve
-                          </button>
-                          <button type="button" onClick={() => { const note = window.prompt("Catatan revisi wajib diisi:", d.note?.startsWith("REVISI:") ? d.note.replace("REVISI:", "").trim() : ""); if (!note || !note.trim()) return; updateDoc(docKey, "REJECTED", `REVISI: ${note.trim()}`) }} className="w-full px-3 py-2 rounded-xl font-extrabold bg-amber-500 text-white hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed" disabled={!hasFile}>Revisi</button>
-                          <button
-                            type="button"
-                            onClick={() => updateDoc(docKey, "REJECTED")}
-                            className="w-full px-3 py-2 rounded-xl font-extrabold bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed"
-                            disabled={!hasFile}
-                          >
-                            Reject
-                          </button>
+                        <div className="space-y-2">
+                          <button type="button" onClick={() => openPreview(item.key)} disabled={!hasFile} className={`w-full rounded-xl border px-3 py-2 text-sm font-extrabold ${hasFile ? "bg-white hover:bg-gray-50" : "cursor-not-allowed bg-gray-100 text-gray-400"}`}>Lihat dokumen</button>
+                          <button type="button" onClick={() => hasFile && void downloadFileBlob(doc.fileId!, doc.fileName ?? item.label)} disabled={!hasFile} className={`w-full rounded-xl border px-3 py-2 text-sm font-extrabold ${hasFile ? "bg-white hover:bg-gray-50" : "cursor-not-allowed bg-gray-100 text-gray-400"}`}>Unduh dokumen</button>
+                          <button type="button" onClick={() => void updateDoc(item.key, "Disetujui")} disabled={!hasFile} className="w-full rounded-xl bg-green-600 px-3 py-2 text-sm font-extrabold text-white hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-500">Disetujui</button>
+                          <button type="button" onClick={() => void updateDoc(item.key, "Perlu revisi")} disabled={!hasFile} className="w-full rounded-xl bg-amber-500 px-3 py-2 text-sm font-extrabold text-white hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-500">Perlu revisi</button>
+                          <button type="button" onClick={() => void updateDoc(item.key, "Ditolak")} disabled={!hasFile} className="w-full rounded-xl bg-red-600 px-3 py-2 text-sm font-extrabold text-white hover:bg-red-700 disabled:bg-gray-200 disabled:text-gray-500">Ditolak</button>
                         </div>
                       </div>
-
                     </div>
                   )
                 })}
@@ -528,109 +279,24 @@ export default function AdminDokumenPage() {
         </div>
       )}
 
-      
-      {preview.open && (
-        <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
-          <div className="w-full max-w-5xl bg-white rounded-2xl shadow-xl border overflow-hidden">
-            <div className="p-4 border-b flex items-center justify-between gap-3">
-              <div>
-                <div className="font-extrabold text-gray-900">{preview.title}</div>
-                <div className="text-xs text-gray-500 break-all">{preview.fileName}</div>
-              </div>
-              <div className="flex gap-2">
-                {preview.url ? (
-                  <a href={preview.url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-xl border bg-white font-extrabold hover:bg-gray-50">Buka Tab Baru</a>
-                ) : (
-                  <span className="px-3 py-2 rounded-xl border bg-gray-100 text-xs font-bold text-gray-500">File belum siap</span>
-                )}
-                <button
-                  onClick={closePreview}
-                  className="px-3 py-2 rounded-xl bg-gray-900 text-white font-extrabold hover:bg-black"
-                >
-                  Tutup
-                </button>
-              </div>
+      {preview.open ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-5xl overflow-hidden rounded-2xl border bg-white shadow-xl">
+            <div className="flex items-center justify-between gap-3 border-b p-4">
+              <div className="font-extrabold text-gray-900">{preview.title}</div>
+              <button onClick={closePreview} className="rounded-xl bg-gray-900 px-3 py-2 font-extrabold text-white hover:bg-black">Tutup</button>
             </div>
-
             <div className="p-4">
-              {selectedAthlete && (
-                <div className="mb-4 grid grid-cols-1 gap-2 rounded-xl border bg-gray-50 p-3 text-xs text-gray-700 md:grid-cols-2">
-                  <div><b>Nama:</b> {selectedAthlete.name}</div>
-                  <div><b>Gender:</b> {selectedAthlete.gender}</div>
-                  <div><b>Tgl Lahir:</b> {selectedAthlete.birthDate || "-"}</div>
-                  <div><b>Asal:</b> {selectedAthlete.institution || "-"}</div>
-                </div>
-              )}
-              {preview.loading && <div className="text-sm text-gray-600">Memuat file...</div>}
-              {!preview.loading && preview.error && <div className="text-sm text-red-700">{preview.error}</div>}
-              
-              {!preview.loading && !preview.error && preview.url && isImageMime(preview.mime) && (
-                <div className="w-full flex justify-center">
-                  
-                  <img src={preview.url} alt={preview.title} className="max-h-[70vh] object-contain rounded-xl border" />
-                </div>
-              )}
-
-              
-              {!preview.loading && !preview.error && preview.url && isPdfMime(preview.mime) && (
-                <div className="w-full h-[70vh] rounded-xl border overflow-hidden">
-                  <iframe title="pdf-preview" src={preview.url} className="w-full h-full" />
-                </div>
-              )}
-
-              
-              {!preview.loading && !preview.error && preview.url && !isImageMime(preview.mime) && !isPdfMime(preview.mime) && (
-                <div className="text-sm text-gray-600">
-                  Tipe file: <b>{preview.mime || "unknown"}</b>. Silakan klik <b>Buka Tab Baru</b> untuk melihat file.
-                </div>
-              )}
+              {preview.error ? <div className="text-sm text-red-700">{preview.error}</div> : null}
+              {!preview.error && preview.url && isImageMime(preview.mime) ? <img src={preview.url} alt={preview.title} className="max-h-[70vh] w-full rounded-xl border object-contain" /> : null}
+              {!preview.error && preview.url && isPdfMime(preview.mime) ? <iframe title="pdf-preview" src={preview.url} className="h-[70vh] w-full rounded-xl border" /> : null}
+              {!preview.error && preview.url && !isImageMime(preview.mime) && !isPdfMime(preview.mime) ? (
+                <div className="text-sm text-gray-600">Pratinjau tidak tersedia untuk tipe file ini. Silakan gunakan tombol unduh dokumen.</div>
+              ) : null}
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -12,5 +12,5 @@ export const DEFAULT_ADMIN_CABOR_ACCOUNTS: DefaultAdminCaborAccount[] = [
   { sportId: "panahan", sportName: "Panahan", picName: "Admin Cabor Panahan", email: "admin.panahan@mg.local", password: "adminpanahan123" },
   { sportId: "bulu_tangkis", sportName: "Bulu Tangkis", picName: "Admin Cabor Bulu Tangkis", email: "admin.bulutangkis@mg.local", password: "adminbulutangkis123" },
   { sportId: "tenis_meja", sportName: "Tenis Meja", picName: "Admin Cabor Tenis Meja", email: "admin.tenismeja@mg.local", password: "admintenismeja123" },
-  { sportId: "voli_indoor", sportName: "Voli Indoor", picName: "Admin Cabor Voli Indoor", email: "admin.voli@mg.local", password: "adminvoli123" },
+  { sportId: "voli_indoor", sportName: "Bola Voli Indoor", picName: "Admin Cabor Bola Voli Indoor", email: "admin.voli@mg.local", password: "adminvoli123" },
 ]

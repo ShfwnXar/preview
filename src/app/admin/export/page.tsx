@@ -2,30 +2,16 @@
 "use client"
 
 import { useAuth } from "@/context/AuthContext"
+import { DOCUMENT_STATUS_OPTIONS, DOCUMENT_FIELD_KEYS, type DocumentStatus } from "@/data/documentCatalog"
+import { OFFICIAL_SPORTS_REFERENCE, getOfficialCategoryOptions, getOfficialSelectionMeta } from "@/data/officialSports"
 import { SPORTS_CATALOG } from "@/data/sportsCatalog"
+import type { AthleteDocuments } from "@/types/registration"
 import { useEffect, useMemo, useState } from "react"
 import * as XLSX from "xlsx"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 
 type PaymentStatus = "NONE" | "PENDING" | "APPROVED" | "REJECTED"
-type DocumentStatus = "EMPTY" | "UPLOADED" | "APPROVED" | "REJECTED"
-
-type DocFile = {
-  status: DocumentStatus
-  fileName?: string
-  mimeType?: string
-  uploadedAt?: string
-}
-
-type AthleteDocuments = {
-  athleteId: string
-  dapodik: DocFile
-  ktp: DocFile
-  kartu: DocFile
-  raport: DocFile
-  foto: DocFile
-}
 
 type Athlete = {
   id: string
@@ -103,51 +89,35 @@ function sportNameById(sportId: string) {
 }
 
 function categoryNameById(sportId: string, categoryId: string) {
-  const s = SPORTS_CATALOG.find((x) => x.id === sportId)
-  const c = s?.categories?.find((k) => k.id === categoryId)
-  return c?.name ?? categoryId
+  return getOfficialSelectionMeta(sportId, categoryId)?.categoryName ?? categoryId
+}
+
+function nomorLombaNameById(sportId: string, categoryId: string) {
+  return getOfficialSelectionMeta(sportId, categoryId)?.nomorLombaDisplayName ?? categoryId
 }
 
 function getDocStatusForAthlete(reg: Registration, athleteId: string) {
   const d = reg.documents?.find((x) => x.athleteId === athleteId)
   if (!d) {
     return {
-      dapodik: "EMPTY" as DocumentStatus,
-      ktp: "EMPTY" as DocumentStatus,
-      kartu: "EMPTY" as DocumentStatus,
-      raport: "EMPTY" as DocumentStatus,
-      foto: "EMPTY" as DocumentStatus,
-      allStatus: "EMPTY" as DocumentStatus,
+      allStatus: "Belum upload" as DocumentStatus,
       completeUploaded: false,
       completeApproved: false,
     }
   }
 
-  const keys: Array<keyof Omit<AthleteDocuments, "athleteId">> = [
-    "dapodik",
-    "ktp",
-    "kartu",
-    "raport",
-    "foto",
-  ]
-  const statuses = keys.map((k) => d[k]?.status ?? ("EMPTY" as DocumentStatus))
+  const statuses = DOCUMENT_FIELD_KEYS.map((key) => d[key]?.status ?? ("Belum upload" as DocumentStatus))
 
-  const completeUploaded = statuses.every((st) => st !== "EMPTY")
-  const completeApproved = statuses.every((st) => st === "APPROVED")
+  const completeUploaded = statuses.every((status) => status !== "Belum upload")
+  const completeApproved = statuses.every((status) => status === "Disetujui")
 
-
-  let allStatus: DocumentStatus = "EMPTY"
-  if (statuses.some((st) => st === "REJECTED")) allStatus = "REJECTED"
-  else if (statuses.some((st) => st === "UPLOADED")) allStatus = "UPLOADED"
-  else if (statuses.every((st) => st === "APPROVED")) allStatus = "APPROVED"
-  else allStatus = "EMPTY"
+  let allStatus: DocumentStatus = "Belum upload"
+  if (statuses.some((status) => status === "Ditolak")) allStatus = "Ditolak"
+  else if (statuses.some((status) => status === "Perlu revisi")) allStatus = "Perlu revisi"
+  else if (statuses.some((status) => status === "Sudah upload")) allStatus = "Sudah upload"
+  else if (statuses.every((status) => status === "Disetujui")) allStatus = "Disetujui"
 
   return {
-    dapodik: d.dapodik?.status ?? "EMPTY",
-    ktp: d.ktp?.status ?? "EMPTY",
-    kartu: d.kartu?.status ?? "EMPTY",
-    raport: d.raport?.status ?? "EMPTY",
-    foto: d.foto?.status ?? "EMPTY",
     allStatus,
     completeUploaded,
     completeApproved,
@@ -166,8 +136,9 @@ type Row = {
   athletePhone: string // ambil dari akun (PIC) kalau atlet tidak punya
   sportId: string
   sportName: string
-  categoryId: string
   categoryName: string
+  nomorLombaId: string
+  nomorLombaName: string
   docAllStatus: DocumentStatus
   officialNames: string
 }
@@ -177,6 +148,7 @@ export default function AdminDownloadPage() {
 
   const [sportFilter, setSportFilter] = useState<string>("ALL")
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL")
+  const [nomorFilter, setNomorFilter] = useState<string>("ALL")
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | "ALL">("ALL")
   const [docFilter, setDocFilter] = useState<DocumentStatus | "ALL">("ALL")
 
@@ -211,25 +183,35 @@ export default function AdminDownloadPage() {
   // Build opsi cabor yang muncul dari data (lebih akurat)
   const availableSports = useMemo(() => {
     if (adminUser?.role === "ADMIN_CABOR") {
-      return SPORTS_CATALOG
+      return OFFICIAL_SPORTS_REFERENCE
         .filter((sport) => canAccessSport(sport.id))
         .map((sport) => ({ id: sport.id, name: sport.name }))
     }
 
-    return SPORTS_CATALOG.map((sport) => ({ id: sport.id, name: sport.name }))
+    return OFFICIAL_SPORTS_REFERENCE.map((sport) => ({ id: sport.id, name: sport.name }))
   }, [adminUser, canAccessSport])
 
   // Build opsi kategori berdasar sportFilter
   const availableCategories = useMemo(() => {
     if (sportFilter === "ALL") return []
-    const s = SPORTS_CATALOG.find((x) => x.id === sportFilter)
-    return (s?.categories ?? []).map((c) => ({ id: c.id, name: c.name }))
+    return getOfficialCategoryOptions(sportFilter).map((category) => ({ id: category.name, name: category.name }))
   }, [sportFilter])
+
+  const availableNomorLomba = useMemo(() => {
+    if (sportFilter === "ALL" || categoryFilter === "ALL") return []
+    const category = getOfficialCategoryOptions(sportFilter).find((item) => item.name === categoryFilter)
+    return (category?.nomorLomba ?? []).map((nomor) => ({ id: nomor.id, name: nomor.displayName }))
+  }, [sportFilter, categoryFilter])
 
   // Auto reset category jika sport ganti
   useEffect(() => {
     setCategoryFilter("ALL")
+    setNomorFilter("ALL")
   }, [sportFilter])
+
+  useEffect(() => {
+    setNomorFilter("ALL")
+  }, [categoryFilter])
 
   // Flatten rows (atlet rows)
   const rows: Row[] = useMemo(() => {
@@ -255,6 +237,7 @@ export default function AdminDownloadPage() {
       const athletes = Array.isArray(reg.athletes) ? reg.athletes : []
       for (const a of athletes) {
         const docInfo = getDocStatusForAthlete(reg, a.id)
+        const selectionMeta = getOfficialSelectionMeta(a.sportId, a.categoryId)
 
         out.push({
           kontingen: u.institutionName ?? "-",
@@ -267,9 +250,10 @@ export default function AdminDownloadPage() {
           athleteInstitution: a.institution ?? (u.institutionName ?? "-"),
           athletePhone: u.phone ?? "-",
           sportId: a.sportId,
-          sportName: sportNameById(a.sportId),
-          categoryId: a.categoryId,
-          categoryName: categoryNameById(a.sportId, a.categoryId),
+          sportName: selectionMeta?.sportName ?? sportNameById(a.sportId),
+          categoryName: selectionMeta?.categoryName ?? categoryNameById(a.sportId, a.categoryId),
+          nomorLombaId: selectionMeta?.nomorLombaId ?? a.categoryId,
+          nomorLombaName: selectionMeta?.nomorLombaDisplayName ?? nomorLombaNameById(a.sportId, a.categoryId),
           docAllStatus: docInfo.allStatus,
           officialNames: officialNamesBySport.get(a.sportId) ?? "-",
         })
@@ -282,10 +266,11 @@ export default function AdminDownloadPage() {
   const filteredRows = useMemo(() => {
     return rows
       .filter((r) => (sportFilter === "ALL" ? true : r.sportId === sportFilter))
-      .filter((r) => (categoryFilter === "ALL" ? true : r.categoryId === categoryFilter))
+      .filter((r) => (categoryFilter === "ALL" ? true : r.categoryName === categoryFilter))
+      .filter((r) => (nomorFilter === "ALL" ? true : r.nomorLombaId === nomorFilter))
       .filter((r) => (paymentFilter === "ALL" ? true : r.paymentStatus === paymentFilter))
       .filter((r) => (docFilter === "ALL" ? true : r.docAllStatus === docFilter))
-  }, [rows, sportFilter, categoryFilter, paymentFilter, docFilter])
+  }, [rows, sportFilter, categoryFilter, nomorFilter, paymentFilter, docFilter])
 
   // Ringkasan header
   const summary = useMemo(() => {
@@ -296,12 +281,7 @@ export default function AdminDownloadPage() {
       ["APPROVED", 0],
       ["REJECTED", 0],
     ])
-    const byDocs = new Map<DocumentStatus, number>([
-      ["EMPTY", 0],
-      ["UPLOADED", 0],
-      ["APPROVED", 0],
-      ["REJECTED", 0],
-    ])
+    const byDocs = new Map<DocumentStatus, number>(DOCUMENT_STATUS_OPTIONS.map((status) => [status, 0]))
 
     for (const r of filteredRows) {
       byPayment.set(r.paymentStatus, (byPayment.get(r.paymentStatus) ?? 0) + 1)
@@ -319,6 +299,7 @@ export default function AdminDownloadPage() {
       "Nama",
       "Cabor",
       "Kategori",
+      "Nomor Lomba",
       "Asal Sekolah/Instansi",
       "No HP (PIC)",
       "Official",
@@ -336,6 +317,7 @@ export default function AdminDownloadPage() {
         r.athleteName,
         r.sportName,
         r.categoryName,
+        r.nomorLombaName,
         r.athleteInstitution,
         r.athletePhone,
         r.officialNames,
@@ -353,6 +335,7 @@ export default function AdminDownloadPage() {
     wsAll["!cols"] = [
       { wch: 5 },
       { wch: 26 },
+      { wch: 20 },
       { wch: 20 },
       { wch: 38 },
       { wch: 26 },
@@ -390,12 +373,11 @@ export default function AdminDownloadPage() {
   const exportPDF = () => {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" })
 
-    const title = "Muhammadiyah Games 2026 — Download Data Peserta"
+    const title = "Muhammadiyah Games 2026 - Download Data Peserta"
     const filters = [
       `Cabor: ${sportFilter === "ALL" ? "Semua" : sportNameById(sportFilter)}`,
-      `Kategori: ${
-        categoryFilter === "ALL" ? "Semua" : categoryNameById(sportFilter === "ALL" ? "" : sportFilter, categoryFilter)
-      }`,
+      `Kategori: ${categoryFilter === "ALL" ? "Semua" : categoryFilter}`,
+      `Nomor Lomba: ${nomorFilter === "ALL" ? "Semua" : nomorLombaNameById(sportFilter === "ALL" ? "" : sportFilter, nomorFilter)}`,
       `Pembayaran: ${paymentFilter === "ALL" ? "Semua" : paymentFilter}`,
       `Dokumen: ${docFilter === "ALL" ? "Semua" : docFilter}`,
       `Waktu: ${new Date().toLocaleString("id-ID")}`,
@@ -414,6 +396,7 @@ export default function AdminDownloadPage() {
       "Nama",
       "Cabor",
       "Kategori",
+      "Nomor",
       "Asal Instansi",
       "No HP (PIC)",
       "Official",
@@ -428,6 +411,7 @@ export default function AdminDownloadPage() {
       r.athleteName,
       r.sportName,
       r.categoryName,
+      r.nomorLombaName,
       r.athleteInstitution,
       r.athletePhone,
       r.officialNames,
@@ -447,14 +431,15 @@ export default function AdminDownloadPage() {
         0: { cellWidth: 28 },
         1: { cellWidth: 110 },
         2: { cellWidth: 80 },
-        3: { cellWidth: 160 },
-        4: { cellWidth: 110 },
-        5: { cellWidth: 72 },
-        6: { cellWidth: 140 },
-        7: { cellWidth: 110 },
-        8: { cellWidth: 120 },
-        9: { cellWidth: 50 },
+        3: { cellWidth: 90 },
+        4: { cellWidth: 150 },
+        5: { cellWidth: 110 },
+        6: { cellWidth: 72 },
+        7: { cellWidth: 140 },
+        8: { cellWidth: 110 },
+        9: { cellWidth: 120 },
         10: { cellWidth: 50 },
+        11: { cellWidth: 50 },
       },
       margin: { left: 40, right: 40 },
     })
@@ -503,8 +488,8 @@ export default function AdminDownloadPage() {
               {badge(`Total Atlet: ${summary.totalAthletes}`, "gray")}
               {badge(`Pay APPROVED: ${summary.byPayment.get("APPROVED") ?? 0}`, "green")}
               {badge(`Pay PENDING: ${summary.byPayment.get("PENDING") ?? 0}`, "yellow")}
-              {badge(`Dok APPROVED: ${summary.byDocs.get("APPROVED") ?? 0}`, "green")}
-              {badge(`Dok REJECTED: ${summary.byDocs.get("REJECTED") ?? 0}`, "red")}
+              {badge(`Dok Disetujui: ${summary.byDocs.get("Disetujui") ?? 0}`, "green")}
+              {badge(`Dok Ditolak: ${summary.byDocs.get("Ditolak") ?? 0}`, "red")}
             </div>
           </div>
         </div>
@@ -514,7 +499,7 @@ export default function AdminDownloadPage() {
       <div className="bg-white border rounded-2xl p-6 shadow-sm space-y-4">
         <div className="text-lg font-extrabold text-gray-900">Filter</div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label className="block text-sm font-bold text-gray-800 mb-2">Cabor</label>
             <select
@@ -547,6 +532,22 @@ export default function AdminDownloadPage() {
           </div>
 
           <div>
+            <label className="block text-sm font-bold text-gray-800 mb-2">Nomor Lomba</label>
+            <select
+              value={nomorFilter}
+              onChange={(e) => setNomorFilter(e.target.value)}
+              className="w-full border rounded-xl px-3 py-2 bg-white"
+              disabled={sportFilter === "ALL" || categoryFilter === "ALL"}
+            >
+              <option value="ALL">{sportFilter === "ALL" ? "Pilih cabor dulu" : categoryFilter === "ALL" ? "Pilih kategori dulu" : "Semua Nomor Lomba"}</option>
+              {availableNomorLomba.map((nomor) => (
+                <option key={nomor.id} value={nomor.id}>{nomor.name}</option>
+              ))}
+            </select>
+            <div className="text-xs text-gray-500 mt-2">Nomor lomba aktif setelah pilih kategori.</div>
+          </div>
+
+          <div>
             <label className="block text-sm font-bold text-gray-800 mb-2">Status Pembayaran</label>
             <select
               value={paymentFilter}
@@ -570,13 +571,12 @@ export default function AdminDownloadPage() {
               className="w-full border rounded-xl px-3 py-2 bg-white"
             >
               <option value="ALL">Semua</option>
-              <option value="EMPTY">EMPTY</option>
-              <option value="UPLOADED">UPLOADED</option>
-              <option value="APPROVED">APPROVED</option>
-              <option value="REJECTED">REJECTED</option>
+              {DOCUMENT_STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
             </select>
             <div className="text-xs text-gray-500 mt-2">
-              Ringkas: jika ada 1 rejected → REJECTED; ada uploaded → UPLOADED; semua approved → APPROVED.
+              Ringkas: jika ada 1 ditolak maka status ringkas Ditolak; jika ada perlu revisi maka Perlu revisi; jika ada unggahan baru maka Sudah upload; jika semua lolos maka Disetujui.
             </div>
           </div>
         </div>
@@ -637,6 +637,7 @@ export default function AdminDownloadPage() {
                 <th className="text-left p-3">Nama</th>
                 <th className="text-left p-3">Cabor</th>
                 <th className="text-left p-3">Kategori</th>
+                <th className="text-left p-3">Nomor Lomba</th>
                 <th className="text-left p-3">Asal Instansi</th>
                 <th className="text-left p-3">No HP (PIC)</th>
                 <th className="text-left p-3">Official</th>
@@ -650,6 +651,7 @@ export default function AdminDownloadPage() {
                   <td className="p-3 font-semibold text-gray-900">{r.athleteName}</td>
                   <td className="p-3">{r.sportName}</td>
                   <td className="p-3">{r.categoryName}</td>
+                  <td className="p-3">{r.nomorLombaName}</td>
                   <td className="p-3">{r.athleteInstitution}</td>
                   <td className="p-3">{r.athletePhone}</td>
                   <td className="p-3">{r.officialNames || "-"}</td>

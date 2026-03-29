@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useAuth } from "@/context/AuthContext"
 import { useEffect, useMemo, useState } from "react"
-import { SPORTS_CATALOG } from "@/data/sportsCatalog"
+import { OFFICIAL_SPORTS_REFERENCE, getOfficialCategoryOptions } from "@/data/officialSports"
 import { buildMedalTable, getWinnerResults, saveWinnerResults, type WinnerResult } from "@/lib/winnerResults"
 
 type PlacementForm = {
@@ -26,8 +26,9 @@ export default function AdminPemenangPage() {
   const [results, setResults] = useState<WinnerResult[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [date, setDate] = useState(todayValue())
-  const [sportId, setSportId] = useState(SPORTS_CATALOG[0]?.id ?? "")
-  const [categoryId, setCategoryId] = useState(SPORTS_CATALOG[0]?.categories[0]?.id ?? "")
+  const [sportId, setSportId] = useState(OFFICIAL_SPORTS_REFERENCE[0]?.id ?? "")
+  const [categoryName, setCategoryName] = useState(OFFICIAL_SPORTS_REFERENCE[0]?.kategori[0]?.name ?? "")
+  const [nomorLombaId, setNomorLombaId] = useState("")
   const [gold, setGold] = useState<PlacementForm>(emptyPlacement())
   const [silver, setSilver] = useState<PlacementForm>(emptyPlacement())
   const [bronze, setBronze] = useState<PlacementForm>(emptyPlacement())
@@ -36,18 +37,30 @@ export default function AdminPemenangPage() {
     setResults(getWinnerResults())
   }, [])
 
-  const selectedSport = useMemo(() => SPORTS_CATALOG.find((sport) => sport.id === sportId) ?? null, [sportId])
+  const selectedSport = useMemo(() => OFFICIAL_SPORTS_REFERENCE.find((sport) => sport.id === sportId) ?? null, [sportId])
+  const categoryOptions = useMemo(() => getOfficialCategoryOptions(sportId), [sportId])
 
   useEffect(() => {
     if (!selectedSport) return
-    if (!selectedSport.categories.some((category) => category.id === categoryId)) {
-      setCategoryId(selectedSport.categories[0]?.id ?? "")
+    if (!categoryOptions.some((category) => category.name === categoryName)) {
+      setCategoryName(categoryOptions[0]?.name ?? "")
     }
-  }, [selectedSport, categoryId])
+  }, [selectedSport, categoryName, categoryOptions])
 
   const selectedCategory = useMemo(() => {
-    return selectedSport?.categories.find((category) => category.id === categoryId) ?? null
-  }, [selectedSport, categoryId])
+    return categoryOptions.find((category) => category.name === categoryName) ?? null
+  }, [categoryOptions, categoryName])
+
+  useEffect(() => {
+    if (!selectedCategory) return
+    if (!selectedCategory.nomorLomba.some((nomor) => nomor.id === nomorLombaId)) {
+      setNomorLombaId(selectedCategory.nomorLomba[0]?.id ?? "")
+    }
+  }, [selectedCategory, nomorLombaId])
+
+  const selectedNomorLomba = useMemo(() => {
+    return selectedCategory?.nomorLomba.find((nomor) => nomor.id === nomorLombaId) ?? null
+  }, [selectedCategory, nomorLombaId])
 
   const medalTable = useMemo(() => {
     return buildMedalTable(results).map((row) => ({ ...row, total: row.gold + row.silver + row.bronze }))
@@ -62,7 +75,7 @@ export default function AdminPemenangPage() {
   }
 
   const handleSave = () => {
-    if (!selectedSport || !selectedCategory) return
+    if (!selectedSport || !selectedCategory || !selectedNomorLomba) return
     if (!gold.institutionId || !silver.institutionId || !bronze.institutionId) {
       setMessage("Lengkapi juara 1, 2, dan 3 terlebih dahulu.")
       return
@@ -74,14 +87,17 @@ export default function AdminPemenangPage() {
       return
     }
 
-    const id = `${date}_${sportId}_${categoryId}`
+    const id = `${date}_${sportId}_${nomorLombaId}`
     const nextRow: WinnerResult = {
       id,
       date,
       sportId: selectedSport.id,
       sportName: selectedSport.name,
-      categoryId: selectedCategory.id,
-      categoryName: selectedCategory.name,
+      categoryId: selectedNomorLomba.id,
+      categoryName: selectedNomorLomba.displayName,
+      participantCategoryName: selectedCategory.name,
+      nomorLombaName: selectedNomorLomba.name,
+      nomorLombaDisplayName: selectedNomorLomba.displayName,
       gold,
       silver,
       bronze,
@@ -148,7 +164,7 @@ export default function AdminPemenangPage() {
             <div>
               <label className="mb-1 block text-sm font-semibold text-gray-700">Cabang Olahraga</label>
               <select value={sportId} onChange={(e) => setSportId(e.target.value)} className="w-full rounded-lg border px-3 py-2">
-                {SPORTS_CATALOG.map((sport) => (
+                {OFFICIAL_SPORTS_REFERENCE.map((sport) => (
                   <option key={sport.id} value={sport.id}>{sport.name}</option>
                 ))}
               </select>
@@ -156,10 +172,19 @@ export default function AdminPemenangPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-semibold text-gray-700">Kategori Lomba</label>
-            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full rounded-lg border px-3 py-2">
-              {(selectedSport?.categories ?? []).map((category) => (
-                <option key={category.id} value={category.id}>{category.name}</option>
+            <label className="mb-1 block text-sm font-semibold text-gray-700">Kategori</label>
+            <select value={categoryName} onChange={(e) => setCategoryName(e.target.value)} className="w-full rounded-lg border px-3 py-2">
+              {categoryOptions.map((category) => (
+                <option key={category.name} value={category.name}>{category.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-gray-700">Nomor Lomba</label>
+            <select value={nomorLombaId} onChange={(e) => setNomorLombaId(e.target.value)} className="w-full rounded-lg border px-3 py-2">
+              {(selectedCategory?.nomorLomba ?? []).map((nomor) => (
+                <option key={nomor.id} value={nomor.id}>{nomor.displayName}</option>
               ))}
             </select>
           </div>
@@ -243,7 +268,8 @@ export default function AdminPemenangPage() {
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <div className="font-bold text-gray-900">{result.sportName}</div>
-                    <div className="text-sm text-gray-600">{result.categoryName}</div>
+                    <div className="text-sm text-gray-600">{result.participantCategoryName ?? "-"}</div>
+                    <div className="text-sm text-gray-600">{result.nomorLombaDisplayName ?? result.categoryName}</div>
                     <div className="mt-1 text-xs text-gray-500">Tanggal: {result.date}</div>
                     <div className="mt-3 text-sm text-gray-700">Emas: <b>{result.gold?.institutionName ?? "-"}</b></div>
                     <div className="text-sm text-gray-700">Perak: <b>{result.silver?.institutionName ?? "-"}</b></div>

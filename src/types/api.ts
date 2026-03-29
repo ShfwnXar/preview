@@ -1,5 +1,6 @@
+import type { DocumentKey, DocumentStatus } from "@/data/documentCatalog"
 import type { Role, InstitutionType, User } from "@/context/AuthContext"
-import type { RegistrationState, PaymentStatus, DocumentStatus } from "@/context/RegistrationContext"
+import type { RegistrationState, PaymentStatus } from "@/context/RegistrationContext"
 import type { RegistrationSettings } from "@/lib/registrationSettings"
 
 export type ApiEnvelope<T> = {
@@ -173,9 +174,10 @@ export type AdminUpdatePaymentRequest = {
 export type AdminUpdateDocRequest = {
   userId: string
   athleteId: string
-  docKey: string
-  status: Exclude<DocumentStatus, "EMPTY">
+  docKey: DocumentKey
+  status: Exclude<DocumentStatus, "Belum upload" | "Sudah upload">
   note?: string
+  validatedBy?: string
 }
 
 export type GetRegistrationSettingsResponse = RegistrationSettings

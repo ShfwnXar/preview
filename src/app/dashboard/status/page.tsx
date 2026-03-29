@@ -5,13 +5,13 @@ import { useMemo, useState } from "react"
 import { useAuth } from "@/context/AuthContext"
 import { useRegistration } from "@/context/RegistrationContext"
 import type { RegistrationState as DraftRegistrationState } from "@/context/RegistrationContext"
+import { DOCUMENT_FIELD_KEYS } from "@/data/documentCatalog"
 import { getApprovedAthleteQuota, getActiveAthleteCount, getExtraAccess, getPendingTopUpCount, getTopUp } from "@/lib/extraAthleteFlow"
 import type { Registration } from "@/types/registration"
 import { readRevisionMode, writeRevisionMode } from "@/lib/registrationFlow"
 
-type DocKey = "dapodik" | "ktp" | "kartu" | "raport" | "foto"
-
-const DOC_KEYS: DocKey[] = ["dapodik", "ktp", "kartu", "raport", "foto"]
+type DocKey = (typeof DOCUMENT_FIELD_KEYS)[number]
+const DOC_KEYS: DocKey[] = DOCUMENT_FIELD_KEYS
 type HybridRegistrationState = DraftRegistrationState & Partial<Registration>
 
 
@@ -163,7 +163,7 @@ export default function StatusPage() {
       let uploaded = 0
       for (const k of DOC_KEYS) {
         const file = d?.[k]
-        if (file?.status && file.status !== "EMPTY") uploaded += 1
+        if (file?.status && file.status !== "Belum upload") uploaded += 1
       }
       return {
         athleteId: a.id,

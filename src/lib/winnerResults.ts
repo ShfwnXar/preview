@@ -1,4 +1,5 @@
-﻿import { SPORTS_CATALOG } from "@/data/sportsCatalog"
+import { getOfficialSelectionMeta } from "@/data/officialSports"
+import { SPORTS_CATALOG } from "@/data/sportsCatalog"
 
 export type WinnerPlacement = {
   institutionId: string
@@ -12,6 +13,9 @@ export type WinnerResult = {
   sportName: string
   categoryId: string
   categoryName: string
+  participantCategoryName?: string
+  nomorLombaName?: string
+  nomorLombaDisplayName?: string
   gold?: WinnerPlacement
   silver?: WinnerPlacement
   bronze?: WinnerPlacement
@@ -39,7 +43,21 @@ export function safeParse<T>(value: string | null, fallback: T): T {
 }
 
 export function getWinnerResults(): WinnerResult[] {
-  return safeParse<WinnerResult[]>(localStorage.getItem(LS_WINNER_RESULTS), [])
+  return safeParse<WinnerResult[]>(localStorage.getItem(LS_WINNER_RESULTS), []).map((result) => {
+    const meta = getOfficialSelectionMeta(result.sportId, result.categoryId)
+    if (!meta) return result
+
+    return {
+      ...result,
+      sportId: meta.sportId,
+      sportName: meta.sportName,
+      categoryId: meta.nomorLombaId,
+      categoryName: meta.nomorLombaDisplayName,
+      participantCategoryName: meta.categoryName,
+      nomorLombaName: meta.nomorLombaName,
+      nomorLombaDisplayName: meta.nomorLombaDisplayName,
+    }
+  })
 }
 
 export function saveWinnerResults(rows: WinnerResult[]) {

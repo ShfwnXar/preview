@@ -70,3 +70,20 @@ export async function openFileInNewTab(fileId: string, fallbackName?: string) {
   // optional: revoke belakangan
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
+
+export async function downloadFileBlob(fileId: string, fallbackName = "dokumen") {
+  const blob = await getFileBlob(fileId)
+  if (!blob) {
+    alert("File tidak ditemukan (mungkin belum diupload / storage dibersihkan).")
+    return
+  }
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fallbackName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}

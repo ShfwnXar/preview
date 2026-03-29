@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react"
 import { ENV } from "@/config/env"
 import type { Athlete as RegistrationAthlete } from "@/context/RegistrationContext"
 import { useRegistration } from "@/context/RegistrationContext"
+import { DOCUMENT_FIELD_KEYS, isUploadedDocumentStatus } from "@/data/documentCatalog"
 import { SPORTS_CATALOG } from "@/data/sportsCatalog"
 import { Input } from "@/components/ui/Input"
 import { Modal } from "@/components/ui/Modal"
@@ -94,7 +95,7 @@ function getSportAthleteQuota(s: any) {
  *  ========================= */
 type DocKey = keyof Omit<AthleteDocuments, "athleteId">
 
-const REQUIRED_DOCS: DocKey[] = ["dapodik", "ktp", "kartu", "raport", "foto"]
+const REQUIRED_DOCS: DocKey[] = DOCUMENT_FIELD_KEYS
 
 function isAthleteProfileComplete(a: any) {
   return !!a?.name?.trim() && !!a?.birthDate
@@ -102,11 +103,7 @@ function isAthleteProfileComplete(a: any) {
 
 function isAthleteDocsComplete(doc: AthleteDocuments | undefined | null) {
   if (!doc) return false
-  return REQUIRED_DOCS.every((k) => {
-    const d = doc[k]
-    const status = String(d?.status || "").toLowerCase()
-    return status === "uploaded" || status === "approved" || status === "pending"
-  })
+  return REQUIRED_DOCS.every((key) => isUploadedDocumentStatus(doc[key]?.status))
 }
 
 function isAthleteComplete(a: any, doc: AthleteDocuments | undefined | null) {

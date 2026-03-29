@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge"
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card"
 import { useAuth } from "@/context/AuthContext"
+import { DOCUMENT_FIELD_KEYS } from "@/data/documentCatalog"
 import { getExtraAccess, getTopUp, withExtraFlow } from "@/lib/extraAthleteFlow"
 import { getFileBlob } from "@/lib/fileStore"
 import { Repos } from "@/repositories"
@@ -34,7 +35,7 @@ type DocumentSummary = {
   rejected: number
 }
 
-const DOC_KEYS: Array<keyof Omit<AthleteDocuments, "athleteId">> = ["dapodik", "ktp", "kartu", "raport", "foto"]
+const DOC_KEYS: Array<keyof Omit<AthleteDocuments, "athleteId">> = DOCUMENT_FIELD_KEYS
 
 function safeParse<T>(value: string | null, fallback: T): T {
   try {
@@ -89,11 +90,11 @@ function summarizeDocuments(reg: Registration | null): DocumentSummary {
   for (const doc of reg.documents ?? []) {
     for (const key of DOC_KEYS) {
       summary.total += 1
-      const status = (doc[key]?.status ?? "EMPTY") as DocumentStatus
-      if (status === "APPROVED") summary.approved += 1
-      else if (status === "REJECTED") summary.rejected += 1
-      else if (status === "UPLOADED") summary.pending += 1
-      if (status !== "EMPTY") summary.uploaded += 1
+      const status = (doc[key]?.status ?? "Belum upload") as DocumentStatus
+      if (status === "Disetujui") summary.approved += 1
+      else if (status === "Ditolak") summary.rejected += 1
+      else if (status === "Sudah upload" || status === "Perlu revisi") summary.pending += 1
+      if (status !== "Belum upload") summary.uploaded += 1
     }
   }
 
@@ -105,7 +106,7 @@ function countApprovedAthletes(reg: Registration | null) {
   return (reg.athletes ?? []).filter((athlete) => {
     const docs = reg.documents.find((item) => item.athleteId === athlete.id)
     if (!docs) return false
-    return DOC_KEYS.every((key) => docs[key]?.status === "APPROVED")
+    return DOC_KEYS.every((key) => docs[key]?.status === "Disetujui")
   }).length
 }
 
@@ -262,9 +263,9 @@ export default function AdminPembayaranPage() {
     if (!registration) return []
     return registration.athletes.map((athlete) => {
       const docs = registration.documents.find((item) => item.athleteId === athlete.id)
-      const uploaded = DOC_KEYS.reduce((total, key) => total + ((docs?.[key]?.status ?? "EMPTY") !== "EMPTY" ? 1 : 0), 0)
-      const approved = DOC_KEYS.reduce((total, key) => total + ((docs?.[key]?.status ?? "EMPTY") === "APPROVED" ? 1 : 0), 0)
-      const rejected = DOC_KEYS.reduce((total, key) => total + ((docs?.[key]?.status ?? "EMPTY") === "REJECTED" ? 1 : 0), 0)
+      const uploaded = DOC_KEYS.reduce((total, key) => total + ((docs?.[key]?.status ?? "Belum upload") !== "Belum upload" ? 1 : 0), 0)
+      const approved = DOC_KEYS.reduce((total, key) => total + ((docs?.[key]?.status ?? "Belum upload") === "Disetujui" ? 1 : 0), 0)
+      const rejected = DOC_KEYS.reduce((total, key) => total + ((docs?.[key]?.status ?? "Belum upload") === "Ditolak" ? 1 : 0), 0)
       return { athlete, uploaded, approved, rejected, pending: Math.max(0, uploaded - approved - rejected) }
     })
   }, [registration])

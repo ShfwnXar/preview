@@ -40,13 +40,13 @@ export default function AdminHomePage() {
         <div className="rounded-xl border border-emerald-100 bg-white p-6 shadow-sm">
           <div className="text-sm text-gray-600">Status Dokumen (mock)</div>
           <div className="mt-2 text-2xl font-bold text-gray-900">{docsStatus}</div>
-          <p className="mt-2 text-xs text-gray-500">Approve/Reject dokumen di menu Validasi Dokumen.</p>
+          <p className="mt-2 text-xs text-gray-500">Tinjau, revisi, setujui, atau tolak dokumen di menu Validasi Dokumen.</p>
         </div>
 
         <div className="rounded-xl border border-emerald-100 bg-white p-6 shadow-sm">
           <div className="text-sm text-gray-600">Final Valid (mock)</div>
           <div className="mt-2 text-2xl font-bold text-gray-900">{finalValid ? "YA" : "BELUM"}</div>
-          <p className="mt-2 text-xs text-gray-500">Otomatis YA jika semua dokumen APPROVED.</p>
+          <p className="mt-2 text-xs text-gray-500">Otomatis YA jika semua dokumen Disetujui.</p>
         </div>
       </div>
 

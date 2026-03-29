@@ -1,3 +1,6 @@
+import type { DocumentKey, DocumentStatus } from "@/data/documentCatalog"
+export type { DocumentStatus } from "@/data/documentCatalog"
+
 // =============================
 // ENUM & TYPE DASAR
 // =============================
@@ -54,25 +57,20 @@ export type Athlete = {
 // DOKUMEN ATLET (STEP 4)
 // =============================
 
-export type DocumentStatus = string
-
 export type DocumentItem = {
   fileId?: string
   fileName?: string
   mimeType?: string
   uploadedAt?: string
+  validatedAt?: string
+  validatedBy?: string
   status: DocumentStatus
   note?: string
 }
 
 export type AthleteDocuments = {
   athleteId: string
-  dapodik: DocumentItem
-  ktp: DocumentItem
-  kartu: DocumentItem
-  raport: DocumentItem
-  foto: DocumentItem
-}
+} & Record<DocumentKey, DocumentItem>
 
 // =============================
 // PEMBAYARAN

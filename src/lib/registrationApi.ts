@@ -6,7 +6,8 @@ import type {
   RegistrationState,
   SportEntry,
 } from "@/context/RegistrationContext"
-import { SPORTS_CATALOG } from "@/data/sportsCatalog"
+import { DOCUMENT_FIELD_KEYS, type DocumentKey } from "@/data/documentCatalog"
+import { getCanonicalCategoryId, getCanonicalSportId, getSportCatalogById } from "@/data/sportsCatalog"
 import type {
   ApiEnvelope,
   BackendAthlete,
@@ -36,61 +37,81 @@ function pickString(...values: unknown[]) {
 
 function normalizeStatus(status?: string): DocumentStatus {
   const value = pickString(status)
-  return value || "EMPTY"
+  if (!value) return "Belum upload"
+
+  const lower = value.toLowerCase()
+  if (["empty", "belum upload", "not_uploaded"].includes(lower)) return "Belum upload"
+  if (["uploaded", "pending", "sudah upload"].includes(lower)) return "Sudah upload"
+  if (["revision", "needs_revision", "perlu revisi"].includes(lower)) return "Perlu revisi"
+  if (["approved", "disetujui"].includes(lower)) return "Disetujui"
+  if (["rejected", "ditolak"].includes(lower)) return "Ditolak"
+
+  return "Belum upload"
 }
 
 export function mapBackendSportsToEntries(sports: BackendSport[]): SportEntry[] {
-  return sports.map((sport) => {
-    const sportId = pickString(sport.id)
-    const catalogSport = SPORTS_CATALOG.find((item) => item.id === sportId)
-    const categories =
-      sport.categories?.map((category) => ({
-        id: pickString(category.id),
-        name: pickString(category.name, category.title) || pickString(category.id),
-        quota: Math.max(0, Number(category.quota ?? 0)),
-      })) ??
-      catalogSport?.categories.map((category) => ({
-        id: category.id,
-        name: category.name,
-        quota: 0,
-      })) ??
-      []
+  return sports.flatMap((sport) => {
+    const rawSportId = pickString(sport.id)
+    const sportId = getCanonicalSportId(rawSportId)
+    const catalogSport = sportId ? getSportCatalogById(sportId) : null
+    if (!sportId || !catalogSport) return []
 
-    return {
+    const quotaByCategory = new Map<string, number>()
+    for (const category of sport.categories ?? []) {
+      const canonicalCategoryId = getCanonicalCategoryId(sportId, pickString(category.id))
+      if (!canonicalCategoryId) continue
+      quotaByCategory.set(
+        canonicalCategoryId,
+        Math.max(quotaByCategory.get(canonicalCategoryId) ?? 0, Math.max(0, Number(category.quota ?? 0)))
+      )
+    }
+
+    const categories = catalogSport.categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      quota: quotaByCategory.get(category.id) ?? 0,
+    }))
+
+    return [{
       id: sportId,
-      name: pickString(sport.name, sport.title) || catalogSport?.name || sportId,
+      name: catalogSport.name,
       plannedAthletes: 0,
       officialCount: 0,
       categories,
-    }
+    }]
   })
 }
 
 export function mapSportIdsToEntries(sportIds: Array<string | number>): SportEntry[] {
-  return sportIds.map((sportIdRaw) => {
-    const sportId = pickString(sportIdRaw)
-    const catalogSport = SPORTS_CATALOG.find((item) => item.id === sportId)
-    return {
+  return sportIds.flatMap((sportIdRaw) => {
+    const sportId = getCanonicalSportId(pickString(sportIdRaw))
+    const catalogSport = sportId ? getSportCatalogById(sportId) : null
+    if (!sportId || !catalogSport) return []
+
+    return [{
       id: sportId,
-      name: catalogSport?.name ?? sportId,
+      name: catalogSport.name,
       plannedAthletes: 0,
       officialCount: 0,
-      categories:
-        catalogSport?.categories.map((category) => ({
-          id: category.id,
-          name: category.name,
-          quota: 0,
-        })) ?? [],
-    }
+      categories: catalogSport.categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        quota: 0,
+      })),
+    }]
   })
 }
 
 export function mapBackendAthlete(athlete: BackendAthlete): Athlete {
+  const rawSportId = pickString(athlete.sport_id)
+  const sportId = getCanonicalSportId(rawSportId) ?? rawSportId
+  const categoryId = getCanonicalCategoryId(sportId, pickString(athlete.category_id)) ?? pickString(athlete.category_id)
+
   return {
     id: pickString(athlete.id),
     teamId: pickString(athlete.team_id) || null,
-    sportId: pickString(athlete.sport_id),
-    categoryId: pickString(athlete.category_id),
+    sportId,
+    categoryId,
     name: pickString(athlete.name, athlete.full_name),
     gender: pickString(athlete.gender).toUpperCase() === "PUTRI" ? "PUTRI" : "PUTRA",
     birthDate: pickString(athlete.birth_date),
@@ -99,21 +120,16 @@ export function mapBackendAthlete(athlete: BackendAthlete): Athlete {
 }
 
 function emptyDoc() {
-  return { status: "EMPTY" as DocumentStatus }
+  return { status: "Belum upload" as DocumentStatus }
 }
 
 export function groupDocumentsByAthlete(documents: BackendDocument[], athleteIds: string[]): AthleteDocuments[] {
   const map = new Map<string, AthleteDocuments>()
 
   for (const athleteId of athleteIds) {
-    map.set(athleteId, {
-      athleteId,
-      dapodik: emptyDoc(),
-      ktp: emptyDoc(),
-      kartu: emptyDoc(),
-      raport: emptyDoc(),
-      foto: emptyDoc(),
-    })
+    const athleteDocs = { athleteId } as AthleteDocuments
+    for (const key of DOCUMENT_FIELD_KEYS) athleteDocs[key] = emptyDoc()
+    map.set(athleteId, athleteDocs)
   }
 
   for (const document of documents) {
@@ -215,25 +231,39 @@ export function summarizeRegistrationList(items: BackendRegistrationSummary[]) {
   }))
 }
 
-export function mapDocumentTypeToDocKey(type: string): keyof Omit<AthleteDocuments, "athleteId"> | null {
+export function mapDocumentTypeToDocKey(type: string): DocumentKey | null {
   const value = type.trim().toLowerCase()
   if (!value) return null
 
-  if (["dapodik", "student_registry", "education_registry"].includes(value)) return "dapodik"
-  if (["ktp", "kia", "identity_card"].includes(value)) return "ktp"
-  if (["kartu", "student_card", "membership_card"].includes(value)) return "kartu"
-  if (["raport", "report_card", "study_result_card"].includes(value)) return "raport"
-  if (["foto", "photo", "pas_foto", "passport_photo"].includes(value)) return "foto"
+  if (["dapodik", "pd_dikti", "student_registry", "education_registry", "proof_of_registration"].includes(value)) return "buktiTerdaftar"
+  if (["recommendation_letter", "surat_rekomendasi"].includes(value)) return "suratRekomendasi"
+  if (["active_letter", "surat_aktif"].includes(value)) return "suratAktif"
+  if (["athlete_bio", "biodata_atlet"].includes(value)) return "biodataAtlet"
+  if (["athlete_statement", "surat_pernyataan_atlet"].includes(value)) return "suratPernyataanAtlet"
+  if (["parental_consent", "surat_izin_orang_tua"].includes(value)) return "suratIzinOrangTua"
+  if (["ktp", "kia", "identity_card"].includes(value)) return "ktpKia"
+  if (["birth_certificate", "akta_kelahiran"].includes(value)) return "aktaKelahiran"
+  if (["student_card", "membership_card", "kartu", "ktm", "kartu_pelajar_ktm"].includes(value)) return "kartuPelajarKtm"
+  if (["raport", "report_card", "study_result_card", "khs", "raport_khs"].includes(value)) return "raportKhs"
+  if (["health_certificate", "bpjs_ketenagakerjaan", "surat_sehat_bpjs"].includes(value)) return "suratSehatBpjs"
+  if (["foto", "photo", "pas_foto", "passport_photo"].includes(value)) return "pasFoto"
   return null
 }
 
-export function mapDocKeyToDocumentType(docKey: keyof Omit<AthleteDocuments, "athleteId">) {
-  const map: Record<keyof Omit<AthleteDocuments, "athleteId">, string> = {
-    dapodik: "student_registry",
-    ktp: "identity_card",
-    kartu: "membership_card",
-    raport: "report_card",
-    foto: "passport_photo",
+export function mapDocKeyToDocumentType(docKey: DocumentKey) {
+  const map: Record<DocumentKey, string> = {
+    buktiTerdaftar: "proof_of_registration",
+    suratRekomendasi: "recommendation_letter",
+    suratAktif: "active_letter",
+    biodataAtlet: "athlete_bio",
+    suratPernyataanAtlet: "athlete_statement",
+    suratIzinOrangTua: "parental_consent",
+    ktpKia: "identity_card",
+    aktaKelahiran: "birth_certificate",
+    kartuPelajarKtm: "kartu_pelajar_ktm",
+    raportKhs: "raport_khs",
+    suratSehatBpjs: "surat_sehat_bpjs",
+    pasFoto: "passport_photo",
   }
 
   return map[docKey]

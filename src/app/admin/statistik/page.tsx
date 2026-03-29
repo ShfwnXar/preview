@@ -3,6 +3,7 @@
 
 import { useAuth } from "@/context/AuthContext"
 import { useEffect, useMemo, useState } from "react"
+import { DOCUMENT_FIELD_KEYS } from "@/data/documentCatalog"
 import type { Registration, DocumentStatus, PaymentStatus } from "@/types/registration"
 
 function safeParse<T>(value: string | null, fallback: T): T {
@@ -14,8 +15,8 @@ function safeParse<T>(value: string | null, fallback: T): T {
   }
 }
 
-type DocKey = "dapodik" | "ktp" | "kartu" | "raport" | "foto"
-const DOC_KEYS: DocKey[] = ["dapodik", "ktp", "kartu", "raport", "foto"]
+type DocKey = (typeof DOCUMENT_FIELD_KEYS)[number]
+const DOC_KEYS: DocKey[] = DOCUMENT_FIELD_KEYS
 
 function fmt(n: number) {
   return n.toLocaleString("id-ID")
@@ -35,9 +36,9 @@ function statusBadge(kind: "ok" | "warn" | "bad" | "neutral", text: string) {
 }
 
 function docKind(s: DocumentStatus) {
-  if (s === "APPROVED") return "ok"
-  if (s === "REJECTED") return "bad"
-  if (s === "UPLOADED") return "warn"
+  if (s === "Disetujui") return "ok"
+  if (s === "Ditolak") return "bad"
+  if (s === "Sudah upload" || s === "Perlu revisi") return "warn"
   return "neutral"
 }
 
@@ -191,12 +192,13 @@ export default function AdminStatistikPage() {
 
   // ===== Document Statistics (per athlete doc file) =====
   const documentStats = useMemo(() => {
-    // hitung per-file (5 dokumen per atlet)
+    // hitung per-file dokumen per atlet
     const counts: Record<DocumentStatus, number> = {
-      EMPTY: 0,
-      UPLOADED: 0,
-      APPROVED: 0,
-      REJECTED: 0,
+      "Belum upload": 0,
+      "Sudah upload": 0,
+      "Perlu revisi": 0,
+      Disetujui: 0,
+      Ditolak: 0,
     }
 
     let totalExpected = 0 // athletes * 5 (filtered)
@@ -213,7 +215,7 @@ export default function AdminStatistikPage() {
       totalExpected += DOC_KEYS.length
       const docs = docsByAth.get(a.athleteId)
       for (const k of DOC_KEYS) {
-        const st: DocumentStatus = (docs?.[k]?.status as DocumentStatus) ?? "EMPTY"
+        const st: DocumentStatus = (docs?.[k]?.status as DocumentStatus) ?? "Belum upload"
         counts[st] += 1
       }
     }
@@ -263,10 +265,10 @@ export default function AdminStatistikPage() {
 
   // ===== Simple derived groups: validated / not validated / rejected =====
   const docGroups = useMemo(() => {
-    const approved = documentStats.counts.APPROVED
-    const uploaded = documentStats.counts.UPLOADED
-    const rejected = documentStats.counts.REJECTED
-    const empty = documentStats.counts.EMPTY
+    const approved = documentStats.counts.Disetujui
+    const uploaded = documentStats.counts["Sudah upload"] + documentStats.counts["Perlu revisi"]
+    const rejected = documentStats.counts.Ditolak
+    const empty = documentStats.counts["Belum upload"]
 
     // interpretasi:
     // - "sudah divalidasi" = APPROVED

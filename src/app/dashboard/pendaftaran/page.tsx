@@ -5,20 +5,21 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useRegistration } from "@/context/RegistrationContext"
 import { useAuth } from "@/context/AuthContext"
+import { SPORTS_CATALOG } from "@/data/sportsCatalog"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Badge } from "@/components/ui/Badge"
 
 type SportCatalogItem = { id: string; name: string; desc: string }
 
-const SPORT_CATALOG: SportCatalogItem[] = [
-  { id: "pencak_silat", name: "Pencak Silat (Tapak Suci)", desc: "Kategori/kelas dipilih di Step 3 per atlet." },
-  { id: "atletik", name: "Atletik", desc: "Nomor lomba dipilih di Step 3 per atlet." },
-  { id: "panahan", name: "Panahan", desc: "Divisi dipilih di Step 3 per atlet." },
-  { id: "bulu_tangkis", name: "Bulu Tangkis", desc: "Nomor dipilih di Step 3." },
-  { id: "tenis_meja", name: "Tenis Meja", desc: "Nomor dipilih di Step 3." },
-  { id: "voli_indoor", name: "Voli Indoor", desc: "Biaya per tim (putra/putri). Kategori tim dipilih di Step 3." },
-]
+const SPORT_CATALOG: SportCatalogItem[] = SPORTS_CATALOG.map((sport) => ({
+  id: sport.id,
+  name: sport.name,
+  desc:
+    sport.id === "voli_indoor"
+      ? "Kategori tim dipilih di Step 3. Biaya dihitung per tim putra/putri."
+      : "Kategori, nomor lomba, dan detail pertandingan dipilih di Step 3 per atlet.",
+}))
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ")

@@ -1,5 +1,6 @@
 import type { RegistrationRepository } from "@/repositories/registrationRepo"
 import type { RegistrationState, AthleteDocuments, PaymentStatus, DocumentStatus } from "@/context/RegistrationContext"
+import type { DocumentKey } from "@/data/documentCatalog"
 import type {
   AdminUpdateDocRequest,
   AdminUpdatePaymentRequest,
@@ -17,7 +18,7 @@ import type {
   UpsertTeamRequest,
 } from "@/types/api"
 
-type DocKey = keyof Omit<AthleteDocuments, "athleteId">
+type DocKey = DocumentKey
 
 function safeParse<T>(value: string | null, fallback: T): T {
   try {
@@ -137,7 +138,7 @@ export class MockRegistrationRepo implements RegistrationRepository {
       athlete_id: input.athleteId,
       type: input.type,
       file_name: input.file.name,
-      status: "pending",
+      status: "Sudah upload",
     }
   }
 
@@ -174,18 +175,20 @@ export class MockRegistrationRepo implements RegistrationRepository {
     if (!reg) return
 
     const docKey = input.docKey as DocKey
-    const nextStatus = input.status as Exclude<DocumentStatus, "EMPTY">
+    const nextStatus = input.status as Exclude<DocumentStatus, "Belum upload" | "Sudah upload">
 
     const updatedDocs = reg.documents.map((doc) => {
       if (doc.athleteId !== input.athleteId) return doc
-      return {
-        ...doc,
-        [docKey]: {
-          ...doc[docKey],
-          status: nextStatus,
-          note: input.note,
-        },
-      }
+        return {
+          ...doc,
+          [docKey]: {
+            ...doc[docKey],
+            status: nextStatus,
+            note: input.note,
+            validatedAt: new Date().toISOString(),
+            validatedBy: input.validatedBy,
+          },
+        }
     })
 
     const updated: RegistrationState = {
