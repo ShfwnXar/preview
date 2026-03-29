@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react"
 import { ENV } from "@/config/env"
 import type { Athlete as RegistrationAthlete } from "@/context/RegistrationContext"
 import { useRegistration } from "@/context/RegistrationContext"
-import { DOCUMENT_FIELD_KEYS, isUploadedDocumentStatus } from "@/data/documentCatalog"
+import { DOCUMENT_FIELD_KEYS, getOfficialRoleLabel, isUploadedDocumentStatus, type OfficialRole } from "@/data/documentCatalog"
 import { SPORTS_CATALOG } from "@/data/sportsCatalog"
 import { Input } from "@/components/ui/Input"
 import { Modal } from "@/components/ui/Modal"
@@ -343,9 +343,10 @@ export default function Step3AtletPage() {
     return paymentApproved && officialsForSelectedSport.length < officialQuota
   }, [paymentApproved, officialsForSelectedSport.length, officialQuota, selectedSport])
 
-  const [officialForm, setOfficialForm] = useState<{ name: string; phone: string }>({
+  const [officialForm, setOfficialForm] = useState<{ name: string; phone: string; role: OfficialRole }>({
     name: "",
     phone: "",
+    role: "OFFICIAL",
   })
 
   // ==== Form atlet dynamic sesuai rosterSize ====
@@ -629,9 +630,10 @@ export default function Step3AtletPage() {
       sportId: selectedSportId,
       name: officialForm.name.trim(),
       phone: officialForm.phone.trim() || undefined,
+      role: officialForm.role,
     } as any)
 
-    setOfficialForm({ name: "", phone: "" })
+    setOfficialForm({ name: "", phone: "", role: "OFFICIAL" })
   }
 
   if (!hydrateReady) {
@@ -987,8 +989,23 @@ export default function Step3AtletPage() {
           <div className="text-sm text-gray-600">
             Isi nama official sesuai kuota official yang kamu isi di Step 1.
           </div>
+          <div className="text-xs text-gray-500">
+            Setiap official wajib unggah surat tugas, KTP, dan pas foto di Step 4. Khusus <b>Pelatih</b> wajib menambahkan sertifikat keahlian.
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm font-bold mb-1">Jenis Official</div>
+              <select
+                value={officialForm.role}
+                onChange={(e) => setOfficialForm((p) => ({ ...p, role: e.target.value as OfficialRole }))}
+                className="w-full border rounded-xl px-3 py-2 bg-white"
+                disabled={!paymentApproved}
+              >
+                <option value="OFFICIAL">Official</option>
+                <option value="PELATIH">Pelatih</option>
+              </select>
+            </div>
             <div>
               <div className="text-sm font-bold mb-1">Nama Official</div>
               <input
@@ -999,7 +1016,7 @@ export default function Step3AtletPage() {
                 disabled={!paymentApproved}
               />
             </div>
-            <div>
+            <div className="md:col-span-2">
               <div className="text-sm font-bold mb-1">No HP/WA (opsional)</div>
               <input
                 value={officialForm.phone}
@@ -1041,6 +1058,7 @@ export default function Step3AtletPage() {
                   >
                     <div>
                       <div className="font-extrabold text-gray-900">{o.name}</div>
+                      <div className="text-xs text-gray-600 mt-1">Peran: {getOfficialRoleLabel(o.role)}</div>
                       <div className="text-xs text-gray-600 mt-1">{o.phone ? `WA: ${o.phone}` : "WA: -"}</div>
                       <div className="text-[11px] text-gray-400 mt-1">ID: {o.id}</div>
                     </div>

@@ -192,6 +192,7 @@ export function mapRegistrationDetailToState(
     athletes,
     officials: [],
     documents,
+    officialDocuments: fallbackState?.officialDocuments ?? [],
     payment: {
       status: inferPaymentStatus(detail.status ?? detail.submission_status, fallbackState?.payment.status),
       totalFee: fallbackState?.payment.totalFee ?? 0,

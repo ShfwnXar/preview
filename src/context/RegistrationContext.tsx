@@ -3,7 +3,14 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react"
 import { ENV } from "@/config/env"
 import { useAuth } from "@/context/AuthContext"
-import { DOCUMENT_FIELD_KEYS, type DocumentKey, type DocumentStatus } from "@/data/documentCatalog"
+import {
+  DOCUMENT_FIELD_KEYS,
+  OFFICIAL_DOCUMENT_FIELD_KEYS,
+  type DocumentKey,
+  type DocumentStatus,
+  type OfficialDocumentKey,
+  type OfficialRole,
+} from "@/data/documentCatalog"
 export type { DocumentStatus } from "@/data/documentCatalog"
 import { getCanonicalCategoryId, getCanonicalSportId, getSportCatalogById } from "@/data/sportsCatalog"
 import { Repos } from "@/repositories"
@@ -31,6 +38,10 @@ export type DocFile = {
 export type AthleteDocuments = {
   athleteId: string
 } & Record<DocumentKey, DocFile>
+
+export type OfficialDocuments = {
+  officialId: string
+} & Record<OfficialDocumentKey, DocFile>
 
 export type SportCategory = {
   id: string
@@ -64,6 +75,7 @@ export type Official = {
   sportId: string
   name: string
   phone?: string
+  role: OfficialRole
 }
 
 export type PaymentInfo = {
@@ -82,6 +94,7 @@ export type RegistrationState = {
   athletes: Athlete[]
   officials: Official[]
   documents: AthleteDocuments[]
+  officialDocuments: OfficialDocuments[]
   payment: PaymentInfo
   updatedAt?: string
 }
@@ -125,6 +138,14 @@ function ensureAthleteDocs(athleteId: string): AthleteDocuments {
   return documents
 }
 
+function ensureOfficialDocs(officialId: string): OfficialDocuments {
+  const documents = { officialId } as OfficialDocuments
+  for (const key of OFFICIAL_DOCUMENT_FIELD_KEYS) {
+    documents[key] = emptyDoc()
+  }
+  return documents
+}
+
 function normalizeStoredAthleteDocs(doc: AthleteDocuments): AthleteDocuments {
   const normalized = ensureAthleteDocs(doc.athleteId)
   const legacyMap: Partial<Record<string, DocumentKey>> = {
@@ -147,6 +168,18 @@ function normalizeStoredAthleteDocs(doc: AthleteDocuments): AthleteDocuments {
   }
 
   for (const key of DOCUMENT_FIELD_KEYS) {
+    if (!normalized[key].status) normalized[key].status = "Belum upload"
+  }
+
+  return normalized
+}
+
+function normalizeStoredOfficialDocs(doc: OfficialDocuments): OfficialDocuments {
+  const normalized = ensureOfficialDocs(doc.officialId)
+
+  for (const key of OFFICIAL_DOCUMENT_FIELD_KEYS) {
+    const current = (doc as Partial<Record<OfficialDocumentKey, DocFile>>)[key]
+    if (current) normalized[key] = { ...normalized[key], ...current }
     if (!normalized[key].status) normalized[key].status = "Belum upload"
   }
 
@@ -227,7 +260,8 @@ function reconcileBySports(
   sports: SportEntry[],
   athletes: Athlete[],
   officials: Official[],
-  documents: AthleteDocuments[]
+  documents: AthleteDocuments[],
+  officialDocuments: OfficialDocuments[]
 ) {
   const sportIds = new Set(sports.map((s) => s.id))
 
@@ -263,6 +297,7 @@ function reconcileBySports(
       return {
         ...official,
         sportId: canonicalSportId,
+        role: official?.role === "PELATIH" ? "PELATIH" : "OFFICIAL",
       }
     })
     .filter((official): official is Official => !!official?.id && !!official.name?.trim() && sportIds.has(official.sportId))
@@ -275,6 +310,16 @@ function reconcileBySports(
   }
   for (const a of cleanAthletes) {
     if (!docsMap.has(a.id)) docsMap.set(a.id, ensureAthleteDocs(a.id))
+  }
+
+  const officialIds = new Set(cleanOfficials.map((o) => o.id))
+  const officialDocsMap = new Map<string, OfficialDocuments>()
+  for (const d of officialDocuments || []) {
+    if (!d?.officialId || !officialIds.has(d.officialId)) continue
+    officialDocsMap.set(d.officialId, normalizeStoredOfficialDocs(d))
+  }
+  for (const o of cleanOfficials) {
+    if (!officialDocsMap.has(o.id)) officialDocsMap.set(o.id, ensureOfficialDocs(o.id))
   }
 
   const athleteCountBySport = new Map<string, number>()
@@ -294,6 +339,7 @@ function reconcileBySports(
     athletes: cleanAthletes,
     officials: cleanOfficials,
     documents: Array.from(docsMap.values()),
+    officialDocuments: Array.from(officialDocsMap.values()),
   }
 }
 
@@ -302,6 +348,7 @@ const initialState: RegistrationState = {
   athletes: [],
   officials: [],
   documents: [],
+  officialDocuments: [],
   payment: { status: "NONE", totalFee: 0 },
 }
 
@@ -330,9 +377,25 @@ type Action =
       mimeType: string
     }
   | {
+      type: "UPSERT_OFFICIAL_DOC_FILE"
+      officialId: string
+      docKey: OfficialDocumentKey
+      fileId: string
+      fileName: string
+      mimeType: string
+    }
+  | {
       type: "SET_DOC_STATUS"
       athleteId: string
       docKey: DocumentKey
+      status: Exclude<DocumentStatus, "Belum upload" | "Sudah upload">
+      note?: string
+      validatedBy?: string
+    }
+  | {
+      type: "SET_OFFICIAL_DOC_STATUS"
+      officialId: string
+      docKey: OfficialDocumentKey
       status: Exclude<DocumentStatus, "Belum upload" | "Sudah upload">
       note?: string
       validatedBy?: string
@@ -342,7 +405,13 @@ function reducer(state: RegistrationState, action: Action): RegistrationState {
   switch (action.type) {
     case "LOAD": {
       const p = action.payload || ({} as RegistrationState)
-      const reconciled = reconcileBySports(sanitizeSportEntries(p.sports || []), p.athletes || [], p.officials || [], p.documents || [])
+      const reconciled = reconcileBySports(
+        sanitizeSportEntries(p.sports || []),
+        p.athletes || [],
+        p.officials || [],
+        p.documents || [],
+        p.officialDocuments || []
+      )
       return {
         ...initialState,
         ...p,
@@ -350,6 +419,7 @@ function reducer(state: RegistrationState, action: Action): RegistrationState {
         athletes: reconciled.athletes,
         officials: reconciled.officials,
         documents: reconciled.documents,
+        officialDocuments: reconciled.officialDocuments,
         payment: { ...initialState.payment, ...(p.payment || {}), totalFee: computeTotalFee(reconciled.sports) },
       }
     }
@@ -358,13 +428,20 @@ function reducer(state: RegistrationState, action: Action): RegistrationState {
       return { ...initialState }
 
     case "SET_SPORTS": {
-      const reconciled = reconcileBySports(sanitizeSportEntries(action.sports), state.athletes, state.officials, state.documents)
+      const reconciled = reconcileBySports(
+        sanitizeSportEntries(action.sports),
+        state.athletes,
+        state.officials,
+        state.documents,
+        state.officialDocuments
+      )
       return {
         ...state,
         sports: reconciled.sports,
         athletes: reconciled.athletes,
         officials: reconciled.officials,
         documents: reconciled.documents,
+        officialDocuments: reconciled.officialDocuments,
         payment: { ...state.payment, totalFee: computeTotalFee(reconciled.sports) },
         updatedAt: new Date().toISOString(),
       }
@@ -460,13 +537,16 @@ function reducer(state: RegistrationState, action: Action): RegistrationState {
       if (currentOfficials >= sport.officialCount) return state
 
       const officials = [action.official, ...state.officials]
-      return { ...state, officials, updatedAt: new Date().toISOString() }
+      const hasDocs = state.officialDocuments.some((d) => d.officialId === action.official.id)
+      const officialDocuments = hasDocs ? state.officialDocuments : [ensureOfficialDocs(action.official.id), ...state.officialDocuments]
+      return { ...state, officials, officialDocuments, updatedAt: new Date().toISOString() }
     }
 
     case "REMOVE_OFFICIAL":
       return {
         ...state,
         officials: state.officials.filter((o) => o.id !== action.officialId),
+        officialDocuments: state.officialDocuments.filter((d) => d.officialId !== action.officialId),
         updatedAt: new Date().toISOString(),
       }
 
@@ -505,6 +585,41 @@ function reducer(state: RegistrationState, action: Action): RegistrationState {
       return { ...state, documents: finalDocs, updatedAt: new Date().toISOString() }
     }
 
+    case "UPSERT_OFFICIAL_DOC_FILE": {
+      const officialExists = state.officials.some((o) => o.id === action.officialId)
+      if (!officialExists) return state
+
+      const uploadedDoc = {
+        status: "Sudah upload" as DocumentStatus,
+        fileId: action.fileId,
+        fileName: action.fileName,
+        mimeType: action.mimeType,
+        uploadedAt: new Date().toISOString(),
+        validatedAt: undefined,
+        validatedBy: undefined,
+        note: undefined,
+      }
+
+      const exists = state.officialDocuments.some((d) => d.officialId === action.officialId)
+      const finalDocs = exists
+        ? state.officialDocuments.map((d) => {
+            if (d.officialId !== action.officialId) return d
+            return {
+              ...d,
+              [action.docKey]: uploadedDoc,
+            }
+          })
+        : [
+            {
+              ...ensureOfficialDocs(action.officialId),
+              [action.docKey]: uploadedDoc,
+            },
+            ...state.officialDocuments,
+          ]
+
+      return { ...state, officialDocuments: finalDocs, updatedAt: new Date().toISOString() }
+    }
+
     case "SET_DOC_STATUS": {
       const athleteExists = state.athletes.some((a) => a.id === action.athleteId)
       if (!athleteExists) return state
@@ -524,6 +639,27 @@ function reducer(state: RegistrationState, action: Action): RegistrationState {
         }
       })
       return { ...state, documents, updatedAt: new Date().toISOString() }
+    }
+
+    case "SET_OFFICIAL_DOC_STATUS": {
+      const officialExists = state.officials.some((o) => o.id === action.officialId)
+      if (!officialExists) return state
+
+      const officialDocuments = state.officialDocuments.map((d) => {
+        if (d.officialId !== action.officialId) return d
+        const prev = d[action.docKey]
+        return {
+          ...d,
+          [action.docKey]: {
+            ...prev,
+            status: action.status,
+            note: action.note,
+            validatedAt: new Date().toISOString(),
+            validatedBy: action.validatedBy,
+          },
+        }
+      })
+      return { ...state, officialDocuments, updatedAt: new Date().toISOString() }
     }
 
     default:
@@ -567,6 +703,13 @@ type RegistrationContextValue = {
   upsertDocFile: (
     athleteId: string,
     docKey: DocumentKey,
+    fileId: string,
+    fileName: string,
+    mimeType: string
+  ) => void
+  upsertOfficialDocFile: (
+    officialId: string,
+    docKey: OfficialDocumentKey,
     fileId: string,
     fileName: string,
     mimeType: string
@@ -784,6 +927,8 @@ export function RegistrationProvider({ children }: { children: React.ReactNode }
 
       upsertDocFile: (athleteId, docKey, fileId, fileName, mimeType) =>
         dispatch({ type: "UPSERT_DOC_FILE", athleteId, docKey, fileId, fileName, mimeType }),
+      upsertOfficialDocFile: (officialId, docKey, fileId, fileName, mimeType) =>
+        dispatch({ type: "UPSERT_OFFICIAL_DOC_FILE", officialId, docKey, fileId, fileName, mimeType }),
       uploadDocument: async (athleteId, docKey, file) => {
         const registrationId = await ensureDraftRegistration()
         if (!registrationId) throw new Error("Registrasi draft belum tersedia.")

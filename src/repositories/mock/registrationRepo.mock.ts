@@ -1,6 +1,6 @@
 import type { RegistrationRepository } from "@/repositories/registrationRepo"
 import type { RegistrationState, AthleteDocuments, PaymentStatus, DocumentStatus } from "@/context/RegistrationContext"
-import type { DocumentKey } from "@/data/documentCatalog"
+import type { DocumentKey, OfficialDocumentKey } from "@/data/documentCatalog"
 import type {
   AdminUpdateDocRequest,
   AdminUpdatePaymentRequest,
@@ -19,6 +19,7 @@ import type {
 } from "@/types/api"
 
 type DocKey = DocumentKey
+type AnyDocKey = DocumentKey | OfficialDocumentKey
 
 function safeParse<T>(value: string | null, fallback: T): T {
   try {
@@ -174,27 +175,49 @@ export class MockRegistrationRepo implements RegistrationRepository {
     const reg = safeParse<RegistrationState | null>(localStorage.getItem(key), null)
     if (!reg) return
 
-    const docKey = input.docKey as DocKey
+    const docKey = input.docKey as AnyDocKey
     const nextStatus = input.status as Exclude<DocumentStatus, "Belum upload" | "Sudah upload">
+    const updatedAt = new Date().toISOString()
 
-    const updatedDocs = reg.documents.map((doc) => {
-      if (doc.athleteId !== input.athleteId) return doc
-        return {
-          ...doc,
-          [docKey]: {
-            ...doc[docKey],
-            status: nextStatus,
-            note: input.note,
-            validatedAt: new Date().toISOString(),
-            validatedBy: input.validatedBy,
-          },
-        }
-    })
+    const updatedOfficialDocs =
+      input.docGroup === "OFFICIAL" && input.officialId
+        ? reg.officialDocuments.map((doc) => {
+            if (doc.officialId !== input.officialId) return doc
+            return {
+              ...doc,
+              [docKey]: {
+                ...doc[docKey as OfficialDocumentKey],
+                status: nextStatus,
+                note: input.note,
+                validatedAt: updatedAt,
+                validatedBy: input.validatedBy,
+              },
+            }
+          })
+        : reg.officialDocuments
+
+    const updatedAthleteDocs =
+      input.docGroup === "OFFICIAL"
+        ? reg.documents
+        : reg.documents.map((doc) => {
+            if (doc.athleteId !== input.athleteId) return doc
+            return {
+              ...doc,
+              [docKey]: {
+                ...doc[docKey as DocKey],
+                status: nextStatus,
+                note: input.note,
+                validatedAt: updatedAt,
+                validatedBy: input.validatedBy,
+              },
+            }
+          })
 
     const updated: RegistrationState = {
       ...reg,
-      documents: updatedDocs,
-      updatedAt: new Date().toISOString(),
+      documents: updatedAthleteDocs,
+      officialDocuments: updatedOfficialDocs,
+      updatedAt,
     }
 
     localStorage.setItem(key, JSON.stringify(updated))

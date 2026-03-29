@@ -23,8 +23,16 @@ export type DocumentKey =
   | "suratSehatBpjs"
   | "pasFoto"
 
+export type OfficialDocumentKey =
+  | "suratTugas"
+  | "ktp"
+  | "pasFoto"
+  | "sertifikatKeahlian"
+
+export type OfficialRole = "OFFICIAL" | "PELATIH"
+
 export type DocumentCatalogItem = {
-  key: DocumentKey
+  key: DocumentKey | OfficialDocumentKey
   label: string
   hint: string
 }
@@ -179,12 +187,69 @@ export const DOCUMENT_FIELD_KEYS: DocumentKey[] = [
   "pasFoto",
 ]
 
+export const OFFICIAL_DOCUMENT_FIELD_KEYS: OfficialDocumentKey[] = [
+  "suratTugas",
+  "ktp",
+  "pasFoto",
+  "sertifikatKeahlian",
+]
+
+export const OFFICIAL_DOCUMENT_CATALOG: Record<OfficialRole, DocumentCatalogItem[]> = {
+  OFFICIAL: [
+    {
+      key: "suratTugas",
+      label: "Surat mandat / surat tugas dari pimpinan sekolah atau perguruan tinggi",
+      hint: "Upload surat mandat atau surat tugas resmi yang masih berlaku dan terbaca jelas.",
+    },
+    {
+      key: "ktp",
+      label: "Identitas diri (KTP)",
+      hint: "Upload scan/foto KTP yang masih berlaku dan terbaca jelas.",
+    },
+    {
+      key: "pasFoto",
+      label: "Pas foto terbaru dengan background biru",
+      hint: "Upload pas foto terbaru dengan background biru dalam format PDF/JPG/PNG.",
+    },
+  ],
+  PELATIH: [
+    {
+      key: "suratTugas",
+      label: "Surat mandat / surat tugas dari pimpinan sekolah atau perguruan tinggi",
+      hint: "Upload surat mandat atau surat tugas resmi yang masih berlaku dan terbaca jelas.",
+    },
+    {
+      key: "ktp",
+      label: "Identitas diri (KTP)",
+      hint: "Upload scan/foto KTP yang masih berlaku dan terbaca jelas.",
+    },
+    {
+      key: "pasFoto",
+      label: "Pas foto terbaru dengan background biru",
+      hint: "Upload pas foto terbaru dengan background biru dalam format PDF/JPG/PNG.",
+    },
+    {
+      key: "sertifikatKeahlian",
+      label: "Sertifikat Keahlian",
+      hint: "Khusus pelatih. Upload sertifikat keahlian atau lisensi kepelatihan yang masih berlaku.",
+    },
+  ],
+}
+
+export function getOfficialRoleLabel(role?: OfficialRole | string) {
+  return role === "PELATIH" ? "Pelatih" : "Official"
+}
+
 export function getParticipantDocumentCategory(institutionType?: InstitutionType | string): ParticipantDocumentCategory {
   return institutionType === "UNIVERSITAS_PTMA" ? "Mahasiswa" : "Pelajar"
 }
 
 export function getDocumentCatalogForParticipant(institutionType?: InstitutionType | string) {
   return DOCUMENT_CATALOG[getParticipantDocumentCategory(institutionType)]
+}
+
+export function getOfficialDocumentCatalog(role?: OfficialRole | string) {
+  return OFFICIAL_DOCUMENT_CATALOG[role === "PELATIH" ? "PELATIH" : "OFFICIAL"]
 }
 
 export function isFinalDocumentStatus(status?: string) {

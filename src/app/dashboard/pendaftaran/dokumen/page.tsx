@@ -8,12 +8,18 @@ import { useAuth } from "@/context/AuthContext"
 import { useRegistration } from "@/context/RegistrationContext"
 import {
   getDocumentCatalogForParticipant,
+  getOfficialDocumentCatalog,
+  getOfficialRoleLabel,
   getParticipantDocumentCategory,
   isUploadedDocumentStatus,
   type DocumentKey,
+  type OfficialDocumentKey,
 } from "@/data/documentCatalog"
 import { SPORTS_CATALOG } from "@/data/sportsCatalog"
 import { putFileBlob } from "@/lib/fileStore"
+
+type UploadMode = "ATHLETE" | "OFFICIAL"
+type AnyDocumentKey = DocumentKey | OfficialDocumentKey
 
 function formatISO(iso?: string) {
   if (!iso) return "-"
@@ -45,62 +51,112 @@ function getDocStatusMeta(status?: string) {
 
 export default function Step4DokumenPage() {
   const { user } = useAuth()
-  const { state, hydrateReady, upsertDocFile, uploadDocument } = useRegistration()
+  const { state, hydrateReady, upsertDocFile, upsertOfficialDocFile, uploadDocument } = useRegistration()
   const paymentApproved = state.payment.status === "APPROVED"
 
   const participantCategory = getParticipantDocumentCategory(user?.institutionType)
-  const documentCatalog = getDocumentCatalogForParticipant(user?.institutionType)
+  const athleteDocumentCatalog = getDocumentCatalogForParticipant(user?.institutionType)
 
+  const [uploadMode, setUploadMode] = useState<UploadMode>("ATHLETE")
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>("")
-  const [loadingKey, setLoadingKey] = useState<DocumentKey | null>(null)
+  const [selectedOfficialId, setSelectedOfficialId] = useState<string>("")
+  const [loadingKey, setLoadingKey] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [showCompletionModal, setShowCompletionModal] = useState(false)
   const [completionNotified, setCompletionNotified] = useState(false)
-  const [pendingFiles, setPendingFiles] = useState<Partial<Record<DocumentKey, File>>>({})
+  const [pendingFiles, setPendingFiles] = useState<Partial<Record<string, File>>>({})
 
   const athletes = state.athletes
+  const officials = state.officials
 
-  const docsForSelected = useMemo(() => {
+  const docsForSelectedAthlete = useMemo(() => {
     if (!selectedAthleteId) return null
     return state.documents.find((doc) => doc.athleteId === selectedAthleteId) ?? null
   }, [selectedAthleteId, state.documents])
+
+  const docsForSelectedOfficial = useMemo(() => {
+    if (!selectedOfficialId) return null
+    return state.officialDocuments.find((doc) => doc.officialId === selectedOfficialId) ?? null
+  }, [selectedOfficialId, state.officialDocuments])
 
   const selectedAthlete = useMemo(() => {
     if (!selectedAthleteId) return null
     return athletes.find((athlete) => athlete.id === selectedAthleteId) ?? null
   }, [athletes, selectedAthleteId])
 
+  const selectedOfficial = useMemo(() => {
+    if (!selectedOfficialId) return null
+    return officials.find((official) => official.id === selectedOfficialId) ?? null
+  }, [officials, selectedOfficialId])
+
+  const selectedOfficialCatalog = useMemo(
+    () => getOfficialDocumentCatalog(selectedOfficial?.role),
+    [selectedOfficial?.role]
+  )
+
   const athleteProgress = useMemo(() => {
     const progressMap = new Map<string, { uploaded: number; total: number }>()
     for (const athlete of athletes) {
       const doc = state.documents.find((item) => item.athleteId === athlete.id)
-      const uploaded = documentCatalog.reduce(
-        (count, item) => count + (isUploadedDocumentStatus(doc?.[item.key]?.status) ? 1 : 0),
+      const uploaded = athleteDocumentCatalog.reduce(
+        (count, item) => count + (isUploadedDocumentStatus(doc?.[item.key as DocumentKey]?.status) ? 1 : 0),
         0
       )
-      progressMap.set(athlete.id, { uploaded, total: documentCatalog.length })
+      progressMap.set(athlete.id, { uploaded, total: athleteDocumentCatalog.length })
     }
     return progressMap
-  }, [athletes, documentCatalog, state.documents])
+  }, [athleteDocumentCatalog, athletes, state.documents])
+
+  const officialProgress = useMemo(() => {
+    const progressMap = new Map<string, { uploaded: number; total: number }>()
+    for (const official of officials) {
+      const catalog = getOfficialDocumentCatalog(official.role)
+      const doc = state.officialDocuments.find((item) => item.officialId === official.id)
+      const uploaded = catalog.reduce(
+        (count, item) => count + (isUploadedDocumentStatus(doc?.[item.key as OfficialDocumentKey]?.status) ? 1 : 0),
+        0
+      )
+      progressMap.set(official.id, { uploaded, total: catalog.length })
+    }
+    return progressMap
+  }, [officials, state.officialDocuments])
 
   useEffect(() => {
-    if (!hydrateReady || selectedAthleteId || athletes.length === 0) return
-    setSelectedAthleteId(athletes[0].id)
-  }, [athletes, hydrateReady, selectedAthleteId])
+    if (!hydrateReady) return
+    if (!selectedAthleteId && athletes.length > 0) setSelectedAthleteId(athletes[0].id)
+    if (!selectedOfficialId && officials.length > 0) setSelectedOfficialId(officials[0].id)
+  }, [athletes, hydrateReady, officials, selectedAthleteId, selectedOfficialId])
 
   useEffect(() => {
-    if (completionNotified || athletes.length === 0) return
-    const allComplete = athletes.every((athlete) => {
-      const doc = state.documents.find((item) => item.athleteId === athlete.id)
-      return documentCatalog.every((item) => isUploadedDocumentStatus(doc?.[item.key]?.status))
-    })
-    if (allComplete) {
+    if (completionNotified) return
+
+    const athleteComplete =
+      athletes.length === 0 ||
+      athletes.every((athlete) => {
+        const doc = state.documents.find((item) => item.athleteId === athlete.id)
+        return athleteDocumentCatalog.every((item) => isUploadedDocumentStatus(doc?.[item.key as DocumentKey]?.status))
+      })
+
+    const officialComplete =
+      officials.length === 0 ||
+      officials.every((official) => {
+        const catalog = getOfficialDocumentCatalog(official.role)
+        const doc = state.officialDocuments.find((item) => item.officialId === official.id)
+        return catalog.every((item) => isUploadedDocumentStatus(doc?.[item.key as OfficialDocumentKey]?.status))
+      })
+
+    if ((athletes.length > 0 || officials.length > 0) && athleteComplete && officialComplete) {
       setShowCompletionModal(true)
       setCompletionNotified(true)
     }
-  }, [athletes, completionNotified, documentCatalog, state.documents])
+  }, [athleteDocumentCatalog, athletes, completionNotified, officials, state.documents, state.officialDocuments])
 
-  const onPickFile = (docKey: DocumentKey, file: File | null) => {
+  useEffect(() => {
+    if (uploadMode === "ATHLETE" && athletes.length === 0 && officials.length > 0) setUploadMode("OFFICIAL")
+    if (uploadMode === "OFFICIAL" && officials.length === 0 && athletes.length > 0) setUploadMode("ATHLETE")
+  }, [athletes.length, officials.length, uploadMode])
+
+  const onPickFile = (docKey: AnyDocumentKey, file: File | null) => {
     if (!file) {
       setPendingFiles((prev) => ({ ...prev, [docKey]: undefined }))
       return
@@ -111,8 +167,12 @@ export default function Step4DokumenPage() {
       setMsg({ type: "error", text: "Step 4 terkunci: pembayaran harus APPROVED terlebih dahulu." })
       return
     }
-    if (!selectedAthleteId) {
+    if (uploadMode === "ATHLETE" && !selectedAthleteId) {
       setMsg({ type: "error", text: "Pilih atlet terlebih dahulu." })
+      return
+    }
+    if (uploadMode === "OFFICIAL" && !selectedOfficialId) {
+      setMsg({ type: "error", text: "Pilih official terlebih dahulu." })
       return
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -123,19 +183,28 @@ export default function Step4DokumenPage() {
     setPendingFiles((prev) => ({ ...prev, [docKey]: file }))
   }
 
-  const onSubmitFile = async (docKey: DocumentKey) => {
+  const onSubmitFile = async (docKey: AnyDocumentKey) => {
     const file = pendingFiles[docKey]
-    if (!file || !selectedAthleteId || !paymentApproved) return
+    if (!file || !paymentApproved) return
 
     setMsg(null)
-    setLoadingKey(docKey)
+    setLoadingKey(String(docKey))
     try {
-      if (ENV.USE_MOCK) {
-        const fileId = `doc_${selectedAthleteId}_${docKey}_${Date.now()}_${Math.random().toString(16).slice(2)}`
-        await putFileBlob(fileId, file)
-        upsertDocFile(selectedAthleteId, docKey, fileId, file.name, file.type || "application/octet-stream")
+      if (uploadMode === "ATHLETE") {
+        if (!selectedAthleteId) return
+
+        if (ENV.USE_MOCK) {
+          const fileId = `doc_${selectedAthleteId}_${docKey}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+          await putFileBlob(fileId, file)
+          upsertDocFile(selectedAthleteId, docKey as DocumentKey, fileId, file.name, file.type || "application/octet-stream")
+        } else {
+          await uploadDocument(selectedAthleteId, docKey as DocumentKey, file)
+        }
       } else {
-        await uploadDocument(selectedAthleteId, docKey, file)
+        if (!selectedOfficialId) return
+        const fileId = `official_${selectedOfficialId}_${docKey}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+        await putFileBlob(fileId, file)
+        upsertOfficialDocFile(selectedOfficialId, docKey as OfficialDocumentKey, fileId, file.name, file.type || "application/octet-stream")
       }
 
       setPendingFiles((prev) => ({ ...prev, [docKey]: undefined }))
@@ -151,22 +220,26 @@ export default function Step4DokumenPage() {
     return <div className="max-w-5xl rounded-xl border bg-white p-6 text-sm text-gray-600">Memuat dokumen...</div>
   }
 
+  const activeCatalog = uploadMode === "ATHLETE" ? athleteDocumentCatalog : selectedOfficialCatalog
+  const activeDocs = uploadMode === "ATHLETE" ? docsForSelectedAthlete : docsForSelectedOfficial
+
   return (
     <div className="max-w-6xl space-y-6">
       <Modal open={showCompletionModal} onClose={() => setShowCompletionModal(false)} title="Dokumen Berhasil Dilengkapi" className="max-w-lg">
-        <p className="text-sm text-gray-700">Semua dokumen wajib sudah terisi. Silakan menunggu proses validasi admin.</p>
+        <p className="text-sm text-gray-700">Semua dokumen wajib atlet dan official yang tersedia sudah terisi. Silakan menunggu proses validasi admin.</p>
       </Modal>
 
       <div className="rounded-xl border bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-2xl font-extrabold text-gray-900">Step 4 - Upload Dokumen Per Atlet</h1>
+            <h1 className="text-2xl font-extrabold text-gray-900">Step 4 - Upload Dokumen Atlet & Official</h1>
             <p className="mt-2 text-gray-600">
-              Kategori peserta aktif: <b>{participantCategory}</b>. Daftar dokumen di bawah sudah disamakan dengan acuan resmi dan wajib dilengkapi per atlet.
+              Kategori peserta aktif: <b>{participantCategory}</b>. Dokumen atlet dan official di bawah akan langsung muncul pada menu <b>Verifikasi Berkas</b> admin setelah diunggah.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="inline-flex rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-bold text-gray-700">Payment: {state.payment.status}</span>
-              <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-800">Dokumen wajib: {documentCatalog.length}</span>
+              <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-800">Atlet: {athletes.length}</span>
+              <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">Official: {officials.length}</span>
             </div>
           </div>
 
@@ -187,48 +260,103 @@ export default function Step4DokumenPage() {
       ) : null}
 
       <div className="rounded-xl border bg-white p-6 shadow-sm space-y-4">
-        <div className="text-lg font-extrabold text-gray-900">Pilih Atlet</div>
-        {athletes.length === 0 ? (
-          <div className="text-sm text-gray-600">Belum ada atlet. Lengkapi Step 3 terlebih dahulu.</div>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setUploadMode("ATHLETE")}
+            className={`rounded-xl px-4 py-2 text-sm font-extrabold ${uploadMode === "ATHLETE" ? "bg-emerald-600 text-white" : "border bg-white text-gray-700 hover:bg-gray-50"}`}
+          >
+            Dokumen Atlet
+          </button>
+          <button
+            type="button"
+            onClick={() => setUploadMode("OFFICIAL")}
+            className={`rounded-xl px-4 py-2 text-sm font-extrabold ${uploadMode === "OFFICIAL" ? "bg-sky-600 text-white" : "border bg-white text-gray-700 hover:bg-gray-50"}`}
+          >
+            Dokumen Official
+          </button>
+        </div>
+
+        {uploadMode === "ATHLETE" ? (
+          <>
+            <div className="text-lg font-extrabold text-gray-900">Pilih Atlet</div>
+            {athletes.length === 0 ? (
+              <div className="text-sm text-gray-600">Belum ada atlet. Lengkapi Step 3 terlebih dahulu.</div>
+            ) : (
+              <>
+                <select value={selectedAthleteId} onChange={(e) => setSelectedAthleteId(e.target.value)} className="w-full rounded-xl border px-3 py-2">
+                  {athletes.map((athlete) => {
+                    const progress = athleteProgress.get(athlete.id)
+                    return (
+                      <option key={athlete.id} value={athlete.id}>
+                        {athlete.name} ({getCategoryMeta(athlete.sportId, athlete.categoryId).sportName} / {getCategoryMeta(athlete.sportId, athlete.categoryId).categoryName}) | Dokumen {progress?.uploaded ?? 0}/{progress?.total ?? athleteDocumentCatalog.length}
+                      </option>
+                    )
+                  })}
+                </select>
+
+                {selectedAthlete ? (
+                  <div className="rounded-xl border bg-gray-50 p-4 text-sm text-gray-700">
+                    <div><b>Nama:</b> {selectedAthlete.name}</div>
+                    <div className="mt-1"><b>Kategori peserta:</b> {participantCategory}</div>
+                    <div className="mt-1"><b>Cabor/Kategori lomba:</b> {getCategoryMeta(selectedAthlete.sportId, selectedAthlete.categoryId).sportName} / {getCategoryMeta(selectedAthlete.sportId, selectedAthlete.categoryId).categoryName}</div>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </>
         ) : (
           <>
-            <select value={selectedAthleteId} onChange={(e) => setSelectedAthleteId(e.target.value)} className="w-full rounded-xl border px-3 py-2">
-              {athletes.map((athlete) => {
-                const progress = athleteProgress.get(athlete.id)
-                return (
-                  <option key={athlete.id} value={athlete.id}>
-                    {athlete.name} ({getCategoryMeta(athlete.sportId, athlete.categoryId).sportName} / {getCategoryMeta(athlete.sportId, athlete.categoryId).categoryName}) | Dokumen {progress?.uploaded ?? 0}/{progress?.total ?? documentCatalog.length}
-                  </option>
-                )
-              })}
-            </select>
+            <div className="text-lg font-extrabold text-gray-900">Pilih Official</div>
+            {officials.length === 0 ? (
+              <div className="text-sm text-gray-600">Belum ada official. Lengkapi input official pada Step 3 terlebih dahulu.</div>
+            ) : (
+              <>
+                <select value={selectedOfficialId} onChange={(e) => setSelectedOfficialId(e.target.value)} className="w-full rounded-xl border px-3 py-2">
+                  {officials.map((official) => {
+                    const progress = officialProgress.get(official.id)
+                    const sportName = SPORTS_CATALOG.find((item) => item.id === official.sportId)?.name ?? official.sportId
+                    return (
+                      <option key={official.id} value={official.id}>
+                        {official.name} ({getOfficialRoleLabel(official.role)} - {sportName}) | Dokumen {progress?.uploaded ?? 0}/{progress?.total ?? getOfficialDocumentCatalog(official.role).length}
+                      </option>
+                    )
+                  })}
+                </select>
 
-            {selectedAthlete ? (
-              <div className="rounded-xl border bg-gray-50 p-4 text-sm text-gray-700">
-                <div><b>Nama:</b> {selectedAthlete.name}</div>
-                <div className="mt-1"><b>Kategori peserta:</b> {participantCategory}</div>
-                <div className="mt-1"><b>Cabor/Kategori lomba:</b> {getCategoryMeta(selectedAthlete.sportId, selectedAthlete.categoryId).sportName} / {getCategoryMeta(selectedAthlete.sportId, selectedAthlete.categoryId).categoryName}</div>
-              </div>
-            ) : null}
+                {selectedOfficial ? (
+                  <div className="rounded-xl border bg-gray-50 p-4 text-sm text-gray-700">
+                    <div><b>Nama:</b> {selectedOfficial.name}</div>
+                    <div className="mt-1"><b>Peran:</b> {getOfficialRoleLabel(selectedOfficial.role)}</div>
+                    <div className="mt-1"><b>Cabor:</b> {SPORTS_CATALOG.find((item) => item.id === selectedOfficial.sportId)?.name ?? selectedOfficial.sportId}</div>
+                    <div className="mt-1"><b>WA:</b> {selectedOfficial.phone || "-"}</div>
+                  </div>
+                ) : null}
+              </>
+            )}
           </>
         )}
       </div>
 
-      {athletes.length > 0 && docsForSelected ? (
+      {activeDocs ? (
         <div className="rounded-xl border bg-white p-6 shadow-sm space-y-4">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="text-lg font-extrabold text-gray-900">Daftar Dokumen Upload</div>
-              <div className="text-sm text-gray-600">Kategori {participantCategory} wajib mengunggah {documentCatalog.length} dokumen berikut.</div>
+              <div className="text-sm text-gray-600">
+                {uploadMode === "ATHLETE"
+                  ? `Kategori ${participantCategory} wajib mengunggah ${activeCatalog.length} dokumen atlet berikut.`
+                  : `Official ${selectedOfficial ? getOfficialRoleLabel(selectedOfficial.role) : ""} wajib mengunggah ${activeCatalog.length} dokumen berikut.`}
+              </div>
             </div>
             <div className="text-xs text-gray-500">Format file: PDF/JPG/PNG | Maks 10MB</div>
           </div>
 
           <div className="space-y-4">
-            {documentCatalog.map((item, index) => {
-              const savedDoc = docsForSelected[item.key]
+            {activeCatalog.map((item, index) => {
+              const savedDoc = activeDocs[item.key as keyof typeof activeDocs]
               const selectedFile = pendingFiles[item.key]
-              const statusMeta = getDocStatusMeta(savedDoc?.status)
+              const statusMeta = getDocStatusMeta(typeof savedDoc === "object" && savedDoc ? savedDoc.status : undefined)
 
               return (
                 <div key={item.key} className="rounded-2xl border border-gray-200 bg-gradient-to-b from-white to-gray-50/60 p-4 md:p-5">
@@ -238,8 +366,8 @@ export default function Step4DokumenPage() {
                       <div className="mt-1 text-xs text-gray-600">{item.hint}</div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-extrabold ${statusMeta.badgeClass}`}>{statusMeta.label}</span>
-                        <span className="text-xs text-gray-500">Tanggal upload: <b>{formatISO(savedDoc?.uploadedAt)}</b></span>
-                        <span className="text-xs text-gray-500">File: <b>{savedDoc?.fileName ?? "-"}</b></span>
+                        <span className="text-xs text-gray-500">Tanggal upload: <b>{formatISO(typeof savedDoc === "object" && savedDoc ? savedDoc.uploadedAt : undefined)}</b></span>
+                        <span className="text-xs text-gray-500">File: <b>{typeof savedDoc === "object" && savedDoc ? savedDoc.fileName ?? "-" : "-"}</b></span>
                       </div>
                     </div>
 
@@ -255,7 +383,7 @@ export default function Step4DokumenPage() {
                       <button
                         type="button"
                         disabled={!paymentApproved || !selectedFile || loadingKey === item.key}
-                        onClick={() => onSubmitFile(item.key)}
+                        onClick={() => void onSubmitFile(item.key)}
                         className={`mt-3 w-full rounded-lg px-3 py-2 text-sm font-extrabold ${!paymentApproved || !selectedFile || loadingKey === item.key ? "cursor-not-allowed bg-gray-200 text-gray-500" : "bg-gradient-to-r from-emerald-500 via-lime-500 to-teal-500 text-white shadow-[0_10px_28px_rgba(16,185,129,0.28)] hover:brightness-105"}`}
                       >
                         {loadingKey === item.key ? "Mengunggah..." : "Upload Dokumen"}

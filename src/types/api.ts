@@ -1,4 +1,4 @@
-import type { DocumentKey, DocumentStatus } from "@/data/documentCatalog"
+import type { DocumentKey, DocumentStatus, OfficialDocumentKey } from "@/data/documentCatalog"
 import type { Role, InstitutionType, User } from "@/context/AuthContext"
 import type { RegistrationState, PaymentStatus } from "@/context/RegistrationContext"
 import type { RegistrationSettings } from "@/lib/registrationSettings"
@@ -173,8 +173,10 @@ export type AdminUpdatePaymentRequest = {
 
 export type AdminUpdateDocRequest = {
   userId: string
-  athleteId: string
-  docKey: DocumentKey
+  athleteId?: string
+  officialId?: string
+  docGroup?: "ATHLETE" | "OFFICIAL"
+  docKey: DocumentKey | OfficialDocumentKey
   status: Exclude<DocumentStatus, "Belum upload" | "Sudah upload">
   note?: string
   validatedBy?: string

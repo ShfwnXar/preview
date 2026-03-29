@@ -1,4 +1,4 @@
-import type { DocumentKey, DocumentStatus } from "@/data/documentCatalog"
+import type { DocumentKey, DocumentStatus, OfficialDocumentKey, OfficialRole } from "@/data/documentCatalog"
 export type { DocumentStatus } from "@/data/documentCatalog"
 
 // =============================
@@ -71,6 +71,18 @@ export type DocumentItem = {
 export type AthleteDocuments = {
   athleteId: string
 } & Record<DocumentKey, DocumentItem>
+
+export type OfficialDocuments = {
+  officialId: string
+} & Record<OfficialDocumentKey, DocumentItem>
+
+export type Official = {
+  id: string
+  sportId: string
+  name: string
+  phone?: string
+  role: OfficialRole
+}
 
 // =============================
 // PEMBAYARAN
@@ -160,9 +172,10 @@ export type Registration = {
   id: string
   userId: string
   sports: Sport[]
-  officials: number
+  officials: Official[] | number
   athletes: Athlete[]
   documents: AthleteDocuments[]
+  officialDocuments?: OfficialDocuments[]
   payment: Payment
   approvedAthleteQuota?: number
   activeAthleteCount?: number
